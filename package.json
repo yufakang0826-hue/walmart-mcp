@@ -1,0 +1,62 @@
+{
+  "name": "walmart-mcp",
+  "version": "0.1.0",
+  "description": "Walmart Marketplace MCP Server for AI-powered seller operations",
+  "type": "module",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "bin": {
+    "walmart-mcp": "build/index.js"
+  },
+  "files": [
+    "build",
+    "README.md",
+    "LICENSE",
+    ".env.example"
+  ],
+  "scripts": {
+    "build": "tsc && tsc-alias",
+    "start": "node build/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "vitest",
+    "inspect": "npm run build && npx @modelcontextprotocol/inspector node build/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "walmart",
+    "marketplace",
+    "seller",
+    "claude",
+    "ai"
+  ],
+  "author": "Fakang Yu",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yufakang0826-hue/walmart-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yufakang0826-hue/walmart-mcp/issues"
+  },
+  "homepage": "https://github.com/yufakang0826-hue/walmart-mcp#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.21.0",
+    "axios": "^1.7.9",
+    "dotenv": "^17.0.0",
+    "winston": "^3.19.0",
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "tsc-alias": "^1.8.10",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
