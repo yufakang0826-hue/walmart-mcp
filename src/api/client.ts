@@ -3,13 +3,17 @@ import { randomUUID } from 'crypto';
 import { type WalmartConfig, getBaseUrl } from '../config/environment.js';
 import { WalmartOAuthClient } from '../auth/oauth.js';
 import { apiLogger, truncateData } from '../utils/logger.js';
+import { RateLimiter } from '../utils/rate-limiter.js';
 
 export class WalmartApiClient {
   private http: AxiosInstance;
   private authClient: WalmartOAuthClient;
+  private rateLimiter: RateLimiter;
 
   constructor(private config: WalmartConfig) {
     this.authClient = new WalmartOAuthClient(config);
+    // Walmart token bucket: ~20 req/s, use 1000 req/60s as safe sliding window
+    this.rateLimiter = new RateLimiter(1000, 60_000, 'marketplace');
 
     this.http = axios.create({
       baseURL: getBaseUrl(config.environment),
@@ -35,6 +39,9 @@ export class WalmartApiClient {
     // ===== Request Interceptor =====
     this.http.interceptors.request.use(
       async (reqConfig: InternalAxiosRequestConfig) => {
+        // 0. Pre-flight rate limit check
+        await this.rateLimiter.acquireAsync();
+
         // 1. Inject access token
         const token = await this.authClient.getAccessToken();
         reqConfig.headers['WM_SEC.ACCESS_TOKEN'] = token;
@@ -68,6 +75,8 @@ export class WalmartApiClient {
       (response) => {
         const tokenCount = response.headers['x-current-token-count'];
         const replenish = response.headers['x-next-replenish-time'];
+        // Update rate limiter from server headers
+        this.rateLimiter.updateFromHeaders(response.headers as Record<string, string>);
         apiLogger.http(
           `← ${response.status} ${response.statusText}`,
           tokenCount ? { rateTokens: tokenCount, replenish } : undefined,

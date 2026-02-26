@@ -2,13 +2,17 @@ import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axio
 import { createSign, randomUUID } from 'crypto';
 import { type WalmartConfig, getAdBaseUrl } from '../../config/environment.js';
 import { apiLogger, truncateData } from '../../utils/logger.js';
+import { RateLimiter } from '../../utils/rate-limiter.js';
 
 export class WalmartAdClient {
   private http: AxiosInstance;
   private accessToken: string | null = null;
   private tokenExpiry = 0;
+  private rateLimiter: RateLimiter;
 
   constructor(private config: WalmartConfig) {
+    // Advertising API: ~10 req/s, use 500 req/60s as safe window
+    this.rateLimiter = new RateLimiter(500, 60_000, 'advertising');
     this.http = axios.create({
       baseURL: getAdBaseUrl(config.environment),
       timeout: 30_000,
@@ -68,6 +72,9 @@ export class WalmartAdClient {
             'Walmart Connect credentials not configured. Set WALMART_AD_CONSUMER_ID and WALMART_AD_PRIVATE_KEY.',
           );
         }
+
+        // Pre-flight rate limit check
+        await this.rateLimiter.acquireAsync();
 
         const token = await this.getAccessToken();
         const timestamp = Date.now().toString();
