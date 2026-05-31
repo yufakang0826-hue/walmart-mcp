@@ -37,8 +37,9 @@ export const itemTools = [
   },
   {
     name: 'walmart_get_item_count',
-    description: 'Get item count grouped by status. Useful for monitoring catalog health.',
+    description: 'Get item count grouped by status. Useful for monitoring catalog health. The status parameter is required by Walmart and defaults to PUBLISHED.',
     inputSchema: {
+      status: z.enum(['PUBLISHED', 'UNPUBLISHED', 'STAGE']).optional().describe('Item status to count (required by Walmart; defaults to PUBLISHED)'),
       lifecycleStatus: z.enum(['ACTIVE', 'RETIRED']).optional().describe('Filter by lifecycle status'),
       publishedStatus: z.enum(['PUBLISHED', 'UNPUBLISHED', 'STAGE']).optional().describe('Filter by publish status'),
     },

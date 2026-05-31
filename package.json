@@ -1,6 +1,9 @@
 {
-  "name": "walmart-mcp",
+  "name": "@yufakang0826-hue/walmart-mcp",
   "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "Walmart Marketplace MCP Server for AI-powered seller operations",
   "type": "module",
   "main": "build/index.js",
@@ -19,6 +22,8 @@
     "start": "node build/index.js",
     "dev": "tsx src/index.ts",
     "test": "vitest",
+    "test:run": "vitest run",
+    "test:sandbox": "npm run build && node test-sandbox.mjs",
     "inspect": "npm run build && npx @modelcontextprotocol/inspector node build/index.js",
     "prepublishOnly": "npm run build"
   },

@@ -45,6 +45,16 @@ describe('API Modules', () => {
       expect(client.get).toHaveBeenCalledWith('/v3/taxonomy');
     });
 
+    it('getItemCount should default the required status param to PUBLISHED', async () => {
+      await api.getItemCount();
+      expect(client.get).toHaveBeenCalledWith('/v3/items/count', { status: 'PUBLISHED' });
+    });
+
+    it('getItemCount should let a caller override status', async () => {
+      await api.getItemCount({ status: 'UNPUBLISHED' });
+      expect(client.get).toHaveBeenCalledWith('/v3/items/count', { status: 'UNPUBLISHED' });
+    });
+
     it('submitItemFeed should POST with feedType header', async () => {
       await api.submitItemFeed({ items: [] });
       expect(client.post).toHaveBeenCalledWith(
@@ -200,9 +210,11 @@ describe('API Modules', () => {
       api = new SettingsApi(client);
     });
 
-    it('getPartnerInfo should GET /v3/settings/partner', async () => {
-      await api.getPartnerInfo();
-      expect(client.get).toHaveBeenCalledWith('/v3/settings/partner');
+    it('getPartnerInfo should GET shippingprofile and return the partner object', async () => {
+      client.get.mockResolvedValue({ partner: { partnerId: '100009' }, other: 1 });
+      const result = await api.getPartnerInfo();
+      expect(client.get).toHaveBeenCalledWith('/v3/settings/shippingprofile');
+      expect(result).toEqual({ partnerId: '100009' });
     });
 
     it('getFulfillmentCenters should GET /v3/settings/shippingprofile', async () => {

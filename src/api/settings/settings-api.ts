@@ -16,6 +16,9 @@ export class SettingsApi {
   }
 
   async getPartnerInfo() {
-    return await this.client.get('/v3/settings/partner');
+    // Walmart has no dedicated partner endpoint; the seller/partner record is
+    // returned as the `partner` object on the shipping-profile settings payload.
+    const data = await this.client.get<{ partner?: object }>('/v3/settings/shippingprofile');
+    return data?.partner ?? data;
   }
 }
