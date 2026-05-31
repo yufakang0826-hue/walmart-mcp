@@ -49,12 +49,17 @@ npm run build
 
 ## Configuration
 
-### Claude Code (claude_desktop_config.json or ~/.claude.json)
+Register the server with your MCP client. Pick the option that matches how you
+installed it (globally from npm, or built from source).
+
+### Option A — Installed globally from npm
+
+The package exposes a `walmart-mcp` binary, so the command is just its name.
 
 ```json
 {
   "mcpServers": {
-    "walmart-mcp": {
+    "walmart": {
       "type": "stdio",
       "command": "walmart-mcp",
       "env": {
@@ -67,6 +72,56 @@ npm run build
   }
 }
 ```
+
+### Option B — Built from source
+
+Point `node` at the compiled entry point (`build/index.js`). Use an absolute path.
+
+```json
+{
+  "mcpServers": {
+    "walmart": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/absolute/path/to/walmart-mcp/build/index.js"],
+      "env": {
+        "WALMART_CLIENT_ID": "your-client-id",
+        "WALMART_CLIENT_SECRET": "your-client-secret",
+        "WALMART_ENVIRONMENT": "sandbox",
+        "WALMART_MARKET": "us"
+      }
+    }
+  }
+}
+```
+
+These blocks go in your Claude Desktop `claude_desktop_config.json` or Claude Code
+`~/.claude.json`. Switch `WALMART_ENVIRONMENT` to `production` when you go live.
+
+### Claude Code one-liner
+
+Instead of editing JSON, you can register the source build from the CLI:
+
+```bash
+claude mcp add walmart -- node /absolute/path/to/walmart-mcp/build/index.js
+```
+
+Then add the credentials as environment variables for that server (or place them in
+a `.env` file in the project root — it is gitignored).
+
+### Verify it works
+
+```bash
+# No client needed — confirms all 126 tools load over the MCP protocol
+node test-mcp.mjs
+
+# With credentials set, run read-only calls against the live sandbox
+npm run test:sandbox
+```
+
+Once registered, restart your MCP client and try a prompt like *"List my Walmart
+orders"* or *"Check inventory for SKU ABC-123"*. If you have not set credentials
+yet, the `walmart_set_credentials` tool can write them at runtime.
 
 ### Environment Variables
 
