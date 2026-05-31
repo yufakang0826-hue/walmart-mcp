@@ -36,8 +36,15 @@ export class ItemsApi {
     return await this.client.post(`${this.basePath}/items/retire`, { skus: data });
   }
 
-  async getItemCount(params?: { lifecycleStatus?: string; publishedStatus?: string }) {
-    return await this.client.get(`${this.basePath}/items/count`, params);
+  async getItemCount(params?: {
+    status?: string;
+    lifecycleStatus?: string;
+    publishedStatus?: string;
+  }) {
+    // `status` is mandatory on /v3/items/count (item statuses in CSV, e.g.
+    // PUBLISHED, UNPUBLISHED). Default to PUBLISHED when not supplied.
+    const query = { status: 'PUBLISHED', ...params };
+    return await this.client.get(`${this.basePath}/items/count`, query);
   }
 
   async getTaxonomy() {

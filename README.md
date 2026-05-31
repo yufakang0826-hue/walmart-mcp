@@ -33,13 +33,15 @@ A Model Context Protocol (MCP) server for the Walmart Marketplace Seller API. Pr
 ### From npm
 
 ```bash
-npm install -g walmart-mcp
+npm install -g @yufakang0826-hue/walmart-mcp
 ```
+
+> Note: the unscoped name `walmart-mcp` on npm belongs to a different author. Use the scoped package `@yufakang0826-hue/walmart-mcp` above.
 
 ### From source
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/walmart-mcp.git
+git clone https://github.com/yufakang0826-hue/walmart-mcp.git
 cd walmart-mcp
 npm install
 npm run build
@@ -131,6 +133,25 @@ node test-mcp.mjs
 # MCP Inspector (interactive debugging)
 npm run inspect
 ```
+
+## Testing
+
+```bash
+# Unit tests (112 tests, no network — uses mocked HTTP clients)
+npm run test:run        # single run
+npm test                # watch mode
+
+# Live sandbox smoke test (read-only GETs against the real API)
+npm run test:sandbox
+```
+
+The unit suite covers the tool dispatcher, every API module, the RSA-SHA256
+advertising signature, the sliding-window rate limiter, and config validation.
+
+`test:sandbox` exercises read-only calls (token, partner info, items, orders,
+returns, feeds, pricing strategies, listing quality) end-to-end. It requires real
+credentials in `.env` and **skips gracefully** (exit 0) when they are absent, so it
+is safe to run in CI.
 
 ## Architecture
 

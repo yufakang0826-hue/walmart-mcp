@@ -18,7 +18,7 @@ class WalmartMcpServer {
 
     this.server = new McpServer({
       name: 'walmart-mcp',
-      version: '0.1.0',
+      version: '0.2.0',
     });
 
     this.api = new WalmartSellerApi(config);
