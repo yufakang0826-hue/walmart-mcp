@@ -1,5 +1,11 @@
 # walmart-mcp
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org/)
+[![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-blue.svg)](https://modelcontextprotocol.io/)
+![Tools](https://img.shields.io/badge/tools-127-orange.svg)
+![Tests](https://img.shields.io/badge/tests-114%20passing-success.svg)
+
 A Model Context Protocol (MCP) server for the Walmart Marketplace Seller API. Provides 127 tools covering the full Walmart seller workflow — items, inventory, orders, pricing, fulfillment (WFS), returns, reports, notifications, and advertising (Walmart Connect).
 
 ## Features
