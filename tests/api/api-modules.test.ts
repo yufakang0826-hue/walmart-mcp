@@ -63,6 +63,18 @@ describe('API Modules', () => {
         expect.objectContaining({ headers: { 'Content-Type': 'application/json' } }),
       );
     });
+
+    it('getHazmatItems should POST to the on-hold search endpoint', async () => {
+      await api.getHazmatItems();
+      expect(client.post).toHaveBeenCalledWith('/v3/items/onhold/search', {});
+    });
+
+    it('getHazmatItems should pass through optional search filters', async () => {
+      await api.getHazmatItems({ status: 'ACTION_NEEDED' });
+      expect(client.post).toHaveBeenCalledWith('/v3/items/onhold/search', {
+        status: 'ACTION_NEEDED',
+      });
+    });
   });
 
   describe('InventoryApi', () => {

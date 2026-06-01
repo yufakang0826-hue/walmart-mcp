@@ -7,6 +7,7 @@ import { getConfig, validateConfig } from './config/environment.js';
 import { WalmartSellerApi } from './api/index.js';
 import { getToolDefinitions, executeTool } from './tools/index.js';
 import { serverLogger } from './utils/logger.js';
+import { WalmartApiError } from './utils/api-error.js';
 
 class WalmartMcpServer {
   private server: McpServer;
@@ -18,7 +19,7 @@ class WalmartMcpServer {
 
     this.server = new McpServer({
       name: 'walmart-mcp',
-      version: '0.3.1',
+      version: '0.3.2',
     });
 
     this.api = new WalmartSellerApi(config);
@@ -48,10 +49,15 @@ class WalmartMcpServer {
         } catch (error: unknown) {
           const errorMsg = error instanceof Error ? error.message : String(error);
           serverLogger.error(`Tool ${toolDef.name} failed: ${errorMsg}`);
+          const payload: Record<string, unknown> = { error: errorMsg };
+          if (error instanceof WalmartApiError) {
+            payload.status = error.status;
+            if (error.details !== undefined) payload.details = error.details;
+          }
           return {
             content: [{
               type: 'text' as const,
-              text: JSON.stringify({ error: errorMsg }, null, 2),
+              text: JSON.stringify(payload, null, 2),
             }],
             isError: true,
           };

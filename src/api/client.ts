@@ -4,6 +4,7 @@ import { type WalmartConfig, getBaseUrl } from '../config/environment.js';
 import { WalmartOAuthClient } from '../auth/oauth.js';
 import { apiLogger, truncateData } from '../utils/logger.js';
 import { RateLimiter } from '../utils/rate-limiter.js';
+import { WalmartApiError, formatWalmartError } from '../utils/api-error.js';
 
 export class WalmartApiClient {
   private http: AxiosInstance;
@@ -135,11 +136,12 @@ export class WalmartApiClient {
           }
         }
 
-        // Parse Walmart error response
-        const walmartError = error.response.data?.errors?.[0];
-        const errorMsg = walmartError
-          ? `${walmartError.code}: ${walmartError.description || walmartError.message}`
-          : `HTTP ${status}: ${error.response.statusText}`;
+        // Parse Walmart error response, preserving the full body detail.
+        const errorMsg = formatWalmartError(
+          status,
+          error.response.statusText,
+          error.response.data,
+        );
 
         apiLogger.error(`API Error: ${errorMsg}`, {
           url: config.url,
@@ -147,7 +149,7 @@ export class WalmartApiClient {
           response: truncateData(error.response.data),
         });
 
-        throw new Error(errorMsg);
+        throw new WalmartApiError(errorMsg, status, error.response.data);
       },
     );
   }

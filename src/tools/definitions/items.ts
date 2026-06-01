@@ -87,9 +87,9 @@ export const itemTools = [
   },
   {
     name: 'walmart_get_hazmat_items',
-    description: 'Get hazardous materials items currently on hold. These items need compliance documentation before they can be published.',
+    description: 'Get items on hold for hazmat compliance review (POST /v3/items/onhold/search). These items need compliance documentation before they can be published.',
     inputSchema: {
-      requestData: z.record(z.string(), z.unknown()).describe('Hazmat query parameters'),
+      requestData: z.record(z.string(), z.unknown()).optional().describe('Optional search filters for the on-hold items query'),
     },
   },
 ];

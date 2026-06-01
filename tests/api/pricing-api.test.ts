@@ -19,14 +19,32 @@ describe('PricingApi', () => {
     api = new PricingApi(client);
   });
 
-  it('updatePrice should PUT /v3/price with body', async () => {
-    const data = { sku: 'SKU-1', pricing: { currency: 'USD', amount: 19.99 } };
-    await api.updatePrice(data);
-    expect(client.put).toHaveBeenCalledWith('/v3/price', data);
+  it('updatePrice should build the Walmart /v3/price payload from semantic params', async () => {
+    await api.updatePrice({ sku: 'SKU-1', amount: 19.99 });
+    expect(client.put).toHaveBeenCalledWith('/v3/price', {
+      sku: 'SKU-1',
+      pricing: [
+        { currentPriceType: 'BASE', currentPrice: { currency: 'USD', amount: 19.99 } },
+      ],
+    });
+  });
+
+  it('updatePrice should honor a custom currency', async () => {
+    await api.updatePrice({ sku: 'SKU-2', amount: 5, currency: 'CAD' });
+    expect(client.put).toHaveBeenCalledWith('/v3/price', {
+      sku: 'SKU-2',
+      pricing: [
+        { currentPriceType: 'BASE', currentPrice: { currency: 'CAD', amount: 5 } },
+      ],
+    });
   });
 
   it('updatePrice should throw on missing sku', async () => {
-    await expect(api.updatePrice({ sku: '', pricing: {} })).rejects.toThrow(/sku is required/i);
+    await expect(api.updatePrice({ sku: '', amount: 1 })).rejects.toThrow(/sku is required/i);
+  });
+
+  it('updatePrice should throw when amount is not a number', async () => {
+    await expect(api.updatePrice({ sku: 'SKU-1' } as any)).rejects.toThrow(/amount/i);
   });
 
   it('submitPriceFeed should POST with feedType=price and JSON header', async () => {

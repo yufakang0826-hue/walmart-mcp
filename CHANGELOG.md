@@ -4,6 +4,40 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-06-01
+
+### Fixed
+- API errors no longer collapse Walmart's response body into a bare
+  `"HTTP 404: Not Found"`. A new `WalmartApiError` carries the HTTP status and
+  raw body; `formatWalmartError` surfaces every `error[]`/`errors[]` entry
+  (`CODE: description (field: x)`) or the raw body when unstructured, and tool
+  results now include `status` and `details`. Applied to both the marketplace
+  and advertising clients.
+- `walmart_get_hazmat_items` pointed at the non-existent `/v3/items/hazmat`
+  (405). Repointed to the documented on-hold search endpoint
+  `POST /v3/items/onhold/search`; the request body is now optional.
+
+### Changed
+- `walmart_update_price` takes semantic params again (`sku`, `amount`,
+  optional `currency`) instead of an opaque `pricing` object. The server builds
+  the Walmart `/v3/price` payload, restoring field-level validation and the
+  ergonomics of the older listing MCP. Promotional/strikethrough pricing
+  remains in `walmart_submit_promo_price_feed`.
+
+### Added
+- Tests for `formatWalmartError`/`WalmartApiError`, the rebuilt price payload,
+  and the corrected hazmat endpoint. Suite grew from 121 to 132 passing tests.
+
+### Notes
+- The test report's `get_wfs_returns` "duplicate data" finding is not a code
+  defect: `GET /v3/returns?isWFSEnabled=Y` is the documented call and is sent
+  correctly; Walmart returns the unfiltered set for accounts not enrolled in
+  WFS. Left as-is.
+- `get_item_quality_details` (405) and `get_shipping_settings` (404) are not
+  changed: the correct endpoints could not be confirmed against authoritative
+  docs, and guessing endpoints is exactly the failure mode to avoid. They need
+  live sandbox verification.
+
 ## [0.3.1] - 2026-06-01
 
 ### Fixed

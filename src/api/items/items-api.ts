@@ -88,7 +88,9 @@ export class ItemsApi {
     );
   }
 
-  async getHazmatItems(data: object) {
-    return await this.client.post(`${this.basePath}/items/hazmat`, data);
+  async getHazmatItems(data?: object) {
+    // Hazmat compliance "on hold" items are retrieved via the on-hold search
+    // endpoint (POST). The previous `/v3/items/hazmat` path does not exist (405).
+    return await this.client.post(`${this.basePath}/items/onhold/search`, data ?? {});
   }
 }

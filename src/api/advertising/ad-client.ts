@@ -3,6 +3,7 @@ import { createSign, randomUUID } from 'crypto';
 import { type WalmartConfig, getAdBaseUrl } from '../../config/environment.js';
 import { apiLogger, truncateData } from '../../utils/logger.js';
 import { RateLimiter } from '../../utils/rate-limiter.js';
+import { WalmartApiError, formatWalmartError } from '../../utils/api-error.js';
 
 export class WalmartAdClient {
   private http: AxiosInstance;
@@ -177,17 +178,18 @@ export class WalmartAdClient {
           }
         }
 
-        const errorMsg = error.response.data?.message
-          || error.response.data?.errors?.[0]?.message
-          || `AD HTTP ${status}: ${error.response.statusText}`;
+        const data = error.response.data;
+        const errorMsg = data?.message
+          ? `HTTP ${status}: ${data.message}`
+          : formatWalmartError(status, error.response.statusText, data);
 
         apiLogger.error(`AD API Error: ${errorMsg}`, {
           url: config.url,
           status,
-          response: truncateData(error.response.data),
+          response: truncateData(data),
         });
 
-        throw new Error(errorMsg);
+        throw new WalmartApiError(errorMsg, status, data);
       },
     );
   }

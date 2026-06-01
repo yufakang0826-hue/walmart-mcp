@@ -5,9 +5,28 @@ export class PricingApi {
 
   constructor(private client: WalmartApiClient) {}
 
-  async updatePrice(data: { sku: string; pricing: object }) {
+  /**
+   * Update the regular (BASE) price for a single SKU. Accepts semantic params
+   * and builds the Walmart `/v3/price` payload, so callers don't have to
+   * hand-assemble Walmart's nested pricing structure. For promotional or
+   * strikethrough pricing, use the promo price feed.
+   */
+  async updatePrice(data: { sku: string; amount: number; currency?: string }) {
     if (!data.sku) throw new Error('SKU is required');
-    return await this.client.put(`${this.basePath}/price`, data);
+    if (typeof data.amount !== 'number' || Number.isNaN(data.amount)) {
+      throw new Error('amount (a number, e.g. 16.99) is required');
+    }
+    const currency = data.currency || 'USD';
+    const payload = {
+      sku: data.sku,
+      pricing: [
+        {
+          currentPriceType: 'BASE',
+          currentPrice: { currency, amount: data.amount },
+        },
+      ],
+    };
+    return await this.client.put(`${this.basePath}/price`, payload);
   }
 
   async submitPriceFeed(data: object) {

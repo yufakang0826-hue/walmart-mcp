@@ -127,7 +127,7 @@ export async function executeTool(
       return await api.items.convertToWfs(args.feedData as object);
 
     case 'walmart_get_hazmat_items':
-      return await api.items.getHazmatItems(args.requestData as object);
+      return await api.items.getHazmatItems(args.requestData as object | undefined);
 
     // ===== Inventory =====
     case 'walmart_get_inventory':
@@ -215,7 +215,9 @@ export async function executeTool(
 
     // ===== Pricing =====
     case 'walmart_update_price':
-      return await api.pricing.updatePrice(args as { sku: string; pricing: object });
+      return await api.pricing.updatePrice(
+        args as { sku: string; amount: number; currency?: string },
+      );
 
     case 'walmart_submit_price_feed':
       return await api.pricing.submitPriceFeed(args.feedData as object);

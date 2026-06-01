@@ -3,10 +3,11 @@ import { z } from 'zod';
 export const pricingTools = [
   {
     name: 'walmart_update_price',
-    description: 'Update the price for a single item by SKU. Can set regular price and optional MSRP for strikethrough display.',
+    description: 'Update the regular (BASE) price for a single item by SKU. The Walmart /v3/price payload is built for you — pass sku and amount. For promotional/strikethrough pricing use walmart_submit_promo_price_feed.',
     inputSchema: {
       sku: z.string().describe('Seller-defined SKU'),
-      pricing: z.record(z.string(), z.unknown()).describe('Pricing object with currentPrice amount and optional MSRP'),
+      amount: z.number().positive().describe('New price amount, e.g. 16.99'),
+      currency: z.string().length(3).optional().describe('ISO 4217 currency code (default USD)'),
     },
   },
   {
