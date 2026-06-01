@@ -25,6 +25,25 @@ export class WalmartAdClient {
     this.setupInterceptors();
   }
 
+  /**
+   * Serialize request params into a query string deterministically (insertion
+   * order, scalars and arrays). Used to embed params into the request URL so
+   * the signed URL is byte-for-byte identical to what is actually sent —
+   * Walmart Connect validates the signature against the full request URL,
+   * including the query string.
+   */
+  private serializeParams(params: Record<string, unknown>): string {
+    const parts: string[] = [];
+    for (const [key, value] of Object.entries(params)) {
+      if (value === undefined || value === null) continue;
+      const values = Array.isArray(value) ? value : [value];
+      for (const v of values) {
+        parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(v))}`);
+      }
+    }
+    return parts.join('&');
+  }
+
   private generateSignature(url: string, method: string, timestamp: string): string {
     if (!this.config.adPrivateKey) {
       throw new Error('WALMART_AD_PRIVATE_KEY is required for advertising API');
@@ -78,7 +97,21 @@ export class WalmartAdClient {
 
         const token = await this.getAccessToken();
         const timestamp = Date.now().toString();
-        const fullUrl = `${reqConfig.baseURL || ''}${reqConfig.url || ''}`;
+
+        // Embed any query params into the URL itself, then clear reqConfig.params
+        // so axios does not re-append them. This guarantees the URL we sign is
+        // identical to the URL actually sent (signature covers the query string).
+        let url = reqConfig.url || '';
+        if (reqConfig.params && typeof reqConfig.params === 'object') {
+          const qs = this.serializeParams(reqConfig.params as Record<string, unknown>);
+          if (qs) {
+            url += (url.includes('?') ? '&' : '?') + qs;
+            reqConfig.url = url;
+            reqConfig.params = undefined;
+          }
+        }
+
+        const fullUrl = `${reqConfig.baseURL || ''}${url}`;
         const signature = this.generateSignature(
           fullUrl,
           reqConfig.method?.toUpperCase() || 'GET',

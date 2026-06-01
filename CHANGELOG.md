@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-06-01
+
+### Fixed
+- Persisting tokens/credentials to `.env` corrupted any value containing `$`
+  sequences (`$1`, `$&`, `$$`). `String.prototype.replace` interpreted them as
+  replacement patterns, so a Walmart access token or client secret with a `$`
+  was written mangled — breaking auth on the next restart. The shared
+  `upsertEnvVars` helper now uses the function form of `replace` to write values
+  literally. Affected `oauth.ts` (token cache) and `walmart_set_credentials`.
+- Walmart Connect advertising signatures did not cover query-string parameters.
+  GET requests with params (e.g. paginated `getCampaigns`/`getKeywords`) signed
+  only the base path, so the signature would not match the actual request URL.
+  Params are now folded into the request URL before signing, guaranteeing the
+  signed URL is identical to what is sent.
+
+### Changed
+- Extracted the duplicated `.env`-writing logic from `oauth.ts` and the tool
+  dispatcher into a single tested `src/utils/env-file.ts#upsertEnvVars`.
+
+### Added
+- Unit tests for `upsertEnvVars` (including the `$`-corruption regression) and
+  for advertising request signing over the full URL with a query string. Suite
+  grew from 114 to 121 passing tests.
+
 ## [0.3.0] - 2026-06-01
 
 ### Added

@@ -1,9 +1,8 @@
 import axios from 'axios';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { type WalmartConfig, getBaseUrl } from '../config/environment.js';
 import { authLogger } from '../utils/logger.js';
+import { upsertEnvVars } from '../utils/env-file.js';
 
 export class WalmartOAuthClient {
   private accessToken: string | null = null;
@@ -140,21 +139,7 @@ export class WalmartOAuthClient {
 
   private updateEnvFile(updates: Record<string, string>): void {
     try {
-      const envPath = join(process.cwd(), '.env');
-      let content = existsSync(envPath) ? readFileSync(envPath, 'utf-8') : '';
-
-      for (const [key, value] of Object.entries(updates)) {
-        const regex = new RegExp(`^(#\\s*)?${key}=.*$`, 'gm');
-        const newLine = `${key}=${value}`;
-
-        if (regex.test(content)) {
-          content = content.replace(regex, newLine);
-        } else {
-          content += `\n${newLine}`;
-        }
-      }
-
-      writeFileSync(envPath, content, 'utf-8');
+      upsertEnvVars(updates);
     } catch {
       // Silent failure - don't interfere with MCP stdout
     }

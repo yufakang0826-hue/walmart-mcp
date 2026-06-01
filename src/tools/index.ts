@@ -1,6 +1,5 @@
-import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { join } from 'path';
 import { type WalmartSellerApi } from '../api/index.js';
+import { upsertEnvVars } from '../utils/env-file.js';
 import { tokenManagementTools } from './definitions/token-management.js';
 import { itemTools } from './definitions/items.js';
 import { inventoryTools } from './definitions/inventory.js';
@@ -49,22 +48,10 @@ export async function executeTool(
       return api.auth.getTokenInfo();
 
     case 'walmart_set_credentials': {
-      const envPath = join(process.cwd(), '.env');
-      let content = existsSync(envPath) ? readFileSync(envPath, 'utf-8') : '';
-      const updates: Record<string, string> = {
+      upsertEnvVars({
         WALMART_CLIENT_ID: args.clientId as string,
         WALMART_CLIENT_SECRET: args.clientSecret as string,
-      };
-      for (const [key, value] of Object.entries(updates)) {
-        const regex = new RegExp(`^(#\\s*)?${key}=.*$`, 'gm');
-        const newLine = `${key}=${value}`;
-        if (regex.test(content)) {
-          content = content.replace(regex, newLine);
-        } else {
-          content += `\n${newLine}`;
-        }
-      }
-      writeFileSync(envPath, content, 'utf-8');
+      });
       return { success: true, message: 'Credentials saved to .env. Restart the server to apply.' };
     }
 
