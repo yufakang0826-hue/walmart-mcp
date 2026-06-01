@@ -59,6 +59,16 @@ export class WalmartOAuthClient {
   }
 
   private async _doRefresh(): Promise<void> {
+    if (!this.config.clientId || !this.config.clientSecret) {
+      throw new Error(
+        'Walmart API credentials are not configured. Set WALMART_CLIENT_ID and '
+        + 'WALMART_CLIENT_SECRET in your MCP server "env" (or a .env file), or call the '
+        + 'walmart_set_credentials tool with your Client ID and Secret. '
+        + 'Get credentials at https://developer.walmart.com/. '
+        + 'Run the walmart_setup_guide tool for step-by-step setup.',
+      );
+    }
+
     const baseUrl = getBaseUrl(this.config.environment);
     const credentials = Buffer.from(
       `${this.config.clientId}:${this.config.clientSecret}`,

@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-06-01
+
+### Added
+- `walmart_setup_guide` tool (127 tools total) — returns step-by-step setup
+  instructions and reports what is already configured (environment, market,
+  whether marketplace and advertising credentials are set). Call it first when
+  getting started or when calls fail due to missing credentials.
+
+### Changed
+- Missing-credentials handling now guides the user instead of failing obscurely:
+  - Token refresh throws an actionable error naming the env vars, the
+    `walmart_set_credentials` tool, and the developer-portal URL, instead of
+    surfacing a raw 401.
+  - The startup banner (shown when credentials are absent) is a clear, multi-line
+    checklist pointing to `walmart_setup_guide`.
+
 ## [0.2.0] - 2026-06-01
 
 ### Fixed

@@ -79,6 +79,32 @@ export async function executeTool(
         svcName: process.env.WALMART_SVC_NAME || 'Walmart Marketplace',
       };
 
+    case 'walmart_setup_guide': {
+      const hasMarketplaceCreds = !!(process.env.WALMART_CLIENT_ID && process.env.WALMART_CLIENT_SECRET);
+      const hasAdCreds = !!(process.env.WALMART_AD_CONSUMER_ID && process.env.WALMART_AD_PRIVATE_KEY);
+      const environment = process.env.WALMART_ENVIRONMENT || 'sandbox';
+      return {
+        status: hasMarketplaceCreds ? 'ready' : 'credentials_required',
+        configured: {
+          marketplaceCredentials: hasMarketplaceCreds,
+          advertisingCredentials: hasAdCreds,
+          environment,
+          market: process.env.WALMART_MARKET || 'us',
+        },
+        steps: [
+          '1. Get API credentials: sign in at https://developer.walmart.com/, create an app under Marketplace, and copy the Client ID and Client Secret.',
+          '2. Provide credentials one of two ways: (a) set WALMART_CLIENT_ID and WALMART_CLIENT_SECRET in your MCP server "env" (or a .env file in the project root) and restart, or (b) call the walmart_set_credentials tool now with your Client ID and Secret.',
+          '3. Choose the environment: set WALMART_ENVIRONMENT to "sandbox" (default, for testing) or "production" (for live selling).',
+          '4. Verify: call walmart_get_token to confirm authentication works, then walmart_display_credentials to review the active configuration.',
+          '5. (Optional) For Walmart Connect advertising tools, also set WALMART_AD_CONSUMER_ID and WALMART_AD_PRIVATE_KEY (apply at https://www.walmartconnect.com/).',
+        ],
+        nextAction: hasMarketplaceCreds
+          ? 'Credentials are set. Call walmart_get_token to verify, then use any tool.'
+          : 'No marketplace credentials yet. Call walmart_set_credentials, or set the env vars and restart.',
+        docs: 'https://developer.walmart.com/',
+      };
+    }
+
     // ===== Items =====
     case 'walmart_get_all_items':
       return await api.items.getAllItems(args as Parameters<typeof api.items.getAllItems>[0]);

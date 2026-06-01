@@ -29,4 +29,9 @@ export const tokenManagementTools = [
     description: 'Display current Walmart API credentials (Client ID shown in full, Client Secret masked). Shows environment and market configuration.',
     inputSchema: {},
   },
+  {
+    name: 'walmart_setup_guide',
+    description: 'Get step-by-step setup instructions and a checklist for configuring this MCP server. Reports what is already configured (environment, market, whether marketplace and advertising credentials are set) and what is still needed. Call this first when getting started or when calls fail due to missing credentials.',
+    inputSchema: {},
+  },
 ];

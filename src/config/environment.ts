@@ -64,8 +64,16 @@ export function getConfig(): WalmartConfig {
 export function validateConfig(config: WalmartConfig): void {
   if (!config.clientId || !config.clientSecret) {
     console.error(
-      'Warning: WALMART_CLIENT_ID and/or WALMART_CLIENT_SECRET not set. ' +
-      'Use walmart_set_credentials tool or set environment variables.',
+      '\n┌─ walmart-mcp: setup required ────────────────────────────────────\n'
+      + '│ No API credentials found. The server will start, but Walmart calls\n'
+      + '│ will fail until you provide credentials. To fix:\n'
+      + '│   1. Get a Client ID + Secret at https://developer.walmart.com/\n'
+      + '│   2. Set WALMART_CLIENT_ID and WALMART_CLIENT_SECRET in your MCP\n'
+      + '│      server "env" (or a .env file), then restart — OR call the\n'
+      + '│      walmart_set_credentials tool at runtime.\n'
+      + '│   Run the walmart_setup_guide tool for full setup steps.\n'
+      + `│ Environment: ${config.environment}   Market: ${config.market}\n`
+      + '└──────────────────────────────────────────────────────────────────\n',
     );
   }
 }

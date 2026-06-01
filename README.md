@@ -1,10 +1,10 @@
 # walmart-mcp
 
-A Model Context Protocol (MCP) server for the Walmart Marketplace Seller API. Provides 126 tools covering the full Walmart seller workflow — items, inventory, orders, pricing, fulfillment (WFS), returns, reports, notifications, and advertising (Walmart Connect).
+A Model Context Protocol (MCP) server for the Walmart Marketplace Seller API. Provides 127 tools covering the full Walmart seller workflow — items, inventory, orders, pricing, fulfillment (WFS), returns, reports, notifications, and advertising (Walmart Connect).
 
 ## Features
 
-- **126 Tools** across 12 modules
+- **127 Tools** across 12 modules
 - **OAuth 2.0** with 15-minute token auto-refresh and proactive renewal
 - **Walmart Connect Advertising** with separate RSA-SHA256 signed authentication
 - **Feed polling** with progressive intervals (15s → 30s → 1m → 2m → 4m)
@@ -15,7 +15,7 @@ A Model Context Protocol (MCP) server for the Walmart Marketplace Seller API. Pr
 
 | Module | Tools | Description |
 |--------|-------|-------------|
-| Token Management | 5 | Credentials, token lifecycle |
+| Token Management | 6 | Credentials, token lifecycle, setup guide |
 | Items | 12 | CRUD, taxonomy, feeds, WFS conversion |
 | Inventory | 10 | Single/multi-node, lag time, feeds |
 | Orders | 10 | Fulfill, ship, cancel, refund, labels |
