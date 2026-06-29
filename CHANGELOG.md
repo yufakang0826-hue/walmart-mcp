@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.4] - 2026-06-29
+
+### Fixed
+- **Corrupt `package-lock.json`**: the lock file ended mid-line inside a
+  `source-map-js` `resolved` URL — invalid JSON. `npm ci` in CI rejected it
+  with `EUSAGE: The npm ci command can only install with an existing
+  package-lock.json ... with lockfileVersion >= 1` (npm's fallback message
+  when lock JSON parse fails). Regenerated cleanly via `npm install` on
+  Windows. Local `npm run test:run` was unaffected because it doesn't require
+  the lock file (uses already-populated `node_modules`). 0.5.3 git tag exists
+  but its CI Test step failed for this reason, so 0.5.3 also never published.
+
 ## [0.5.3] - 2026-06-29
 
 ### Fixed
@@ -12,7 +24,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the "id-token" permission`. The workflow only requested `contents: write`,
   but `--provenance` needs OIDC token issuance. Added `id-token: write` to
   `.github/workflows/release.yml` `permissions:`. 0.5.2 never reached npm —
-  0.5.3 is the first published version under the `@lehaotech` scope.
+  0.5.4 is the first published version under the `@lehaotech` scope.
 - **MCP server version drift**: `src/index.ts` reported `0.3.2` to MCP clients
   regardless of the published version (lagged through five releases). The
   server now reads `version` from `package.json` at startup so what the client
