@@ -1,5 +1,6 @@
 # walmart-mcp
 
+[![npm](https://img.shields.io/npm/v/@lehaotech/walmart-mcp?logo=npm)](https://www.npmjs.com/package/@lehaotech/walmart-mcp)
 [![CI](https://github.com/yufakang0826-hue/walmart-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/yufakang0826-hue/walmart-mcp/actions/workflows/ci.yml)
 [![Release](https://github.com/yufakang0826-hue/walmart-mcp/actions/workflows/release.yml/badge.svg)](https://github.com/yufakang0826-hue/walmart-mcp/actions/workflows/release.yml)
 [![codecov](https://codecov.io/gh/yufakang0826-hue/walmart-mcp/branch/master/graph/badge.svg)](https://codecov.io/gh/yufakang0826-hue/walmart-mcp)
@@ -27,7 +28,7 @@
 | **Onboard** | `walmart-mcp setup` (7 MCP clients auto-detected) |
 | **Self-check** | `walmart-mcp diagnose --export` |
 | **Docs** | [Quick Start](#5-minute-quick-start) · [Tools](#modules) · [Known Issues](#known-issues) · [Contributing](./CONTRIBUTING.md) · [Architecture](./docs/architecture.md) |
-| **Status** | v0.5.0 (npm) · 249 tests passing · 70% coverage threshold · 3 GitHub Actions workflows |
+| **Status** | v0.5.4 (npm, with provenance) · 249 tests passing · 87% statement coverage · 3 GitHub Actions workflows |
 | **License** | MIT |
 
 A Model Context Protocol (MCP) server for the Walmart Marketplace Seller API.

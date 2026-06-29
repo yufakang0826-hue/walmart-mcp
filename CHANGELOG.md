@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.5] - 2026-06-29
+
+### Changed
+- **README updated to reflect actual published state**:
+  - New npm version badge at the top, sourced from
+    `https://img.shields.io/npm/v/@lehaotech/walmart-mcp`. Always shows the
+    real registry version, no manual bumps.
+  - Status row updated from `v0.5.0 (npm) · 70% coverage threshold` to
+    `v0.5.4 (npm, with provenance) · 87% statement coverage`. The 70% number
+    was the old (failing) gate; the 87% is the actual measured statement
+    coverage on the 249-test suite under the 50/40/50/50 threshold.
+
+### Notes
+- No code changes, no behavior changes; pure docs bump. Published only to
+  keep the README accurate against what's on npm.
+
 ## [0.5.4] - 2026-06-29
 
 ### Fixed
