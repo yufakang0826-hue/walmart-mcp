@@ -23,7 +23,7 @@
 
 | | |
 |---|---|
-| **Install** | `npm install -g @yufakang0826-hue/walmart-mcp` |
+| **Install** | `npm install -g @lehaotech/walmart-mcp` |
 | **Onboard** | `walmart-mcp setup` (7 MCP clients auto-detected) |
 | **Self-check** | `walmart-mcp diagnose --export` |
 | **Docs** | [Quick Start](#5-minute-quick-start) · [Tools](#modules) · [Known Issues](#known-issues) · [Contributing](./CONTRIBUTING.md) · [Architecture](./docs/architecture.md) |
@@ -40,7 +40,7 @@ through the same auth + retry + rate-limit pipeline.
 
 ```bash
 # 1. Install the published package
-npm install -g @yufakang0826-hue/walmart-mcp
+npm install -g @lehaotech/walmart-mcp
 
 # 2. Run the interactive setup wizard. It will:
 #    - ask for environment + market (sandbox / production, us / mx / ca / cl)
@@ -114,7 +114,7 @@ Other subcommands: `walmart-mcp version`, `walmart-mcp help`.
 ### From npm (recommended)
 
 ```bash
-npm install -g @yufakang0826-hue/walmart-mcp
+npm install -g @lehaotech/walmart-mcp
 ```
 
 The unscoped name `walmart-mcp` on npm belongs to a different author. Use the

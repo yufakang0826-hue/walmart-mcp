@@ -1,6 +1,6 @@
 {
-  "name": "@yufakang0826-hue/walmart-mcp",
-  "version": "0.5.1",
+  "name": "@lehaotech/walmart-mcp",
+  "version": "0.5.2",
   "publishConfig": {
     "access": "public"
   },

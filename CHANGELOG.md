@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-06-29
+
+### Changed
+- **npm package name renamed** from `@yufakang0826-hue/walmart-mcp` to
+  `@lehaotech/walmart-mcp` to match the maintainer's npm scope. The GitHub
+  repo (`yufakang0826-hue/walmart-mcp`) is unchanged.
+
+### Notes
+- Reinstall users: `npm install -g @lehaotech/walmart-mcp` (old scope is not published).
+
 ## [0.5.1] - 2026-06-29
 
 ### Fixed
