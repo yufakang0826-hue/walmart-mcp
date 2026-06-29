@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { z, ZodError, type ZodType } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -8,6 +11,23 @@ import { WalmartSellerApi } from './api/index.js';
 import { getToolDefinitions, executeTool } from './tools/index.js';
 import { serverLogger } from './utils/logger.js';
 import { WalmartApiError } from './utils/api-error.js';
+
+// Resolve package.json once at module load so the MCP server's reported
+// version stays in lockstep with what's actually installed. Avoids drift like
+// the earlier hard-coded '0.3.2' which lagged through five releases.
+function readPackageVersion(): string {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    // build/index.js -> ../package.json. Works the same when running via tsx
+    // from src/ because tsx evaluates in place under the repo root.
+    const pkgPath = join(here, '..', 'package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { version?: string };
+    return pkg.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+const PACKAGE_VERSION = readPackageVersion();
 
 class WalmartMcpServer {
   private server: McpServer;
@@ -19,7 +39,7 @@ class WalmartMcpServer {
 
     this.server = new McpServer({
       name: 'walmart-mcp',
-      version: '0.3.2',
+      version: PACKAGE_VERSION,
     });
 
     this.api = new WalmartSellerApi(config);
@@ -150,14 +170,7 @@ async function dispatch(): Promise<void> {
     return;
   }
   if (subcommand === 'version' || subcommand === '--version' || subcommand === '-v') {
-    // Resolve package.json next to build/ directory and print the version.
-    const { readFileSync } = await import('node:fs');
-    const { join, dirname } = await import('node:path');
-    const { fileURLToPath } = await import('node:url');
-    const here = dirname(fileURLToPath(import.meta.url));
-    // build/ sibling to package.json (build dir lives at repo root).
-    const pkg = JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8'));
-    console.log(`walmart-mcp v${pkg.version}`);
+    console.log(`walmart-mcp v${PACKAGE_VERSION}`);
     return;
   }
   if (subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
