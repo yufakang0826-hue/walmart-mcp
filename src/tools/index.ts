@@ -12,6 +12,8 @@ import { reportTools } from './definitions/reports.js';
 import { notificationTools } from './definitions/notifications.js';
 import { advertisingTools } from './definitions/advertising.js';
 import { settingsTools } from './definitions/settings.js';
+import { discoveryTools } from './definitions/discovery.js';
+import { searchEndpoints } from '../utils/endpoint-catalog.js';
 
 export function getToolDefinitions() {
   return [
@@ -27,6 +29,7 @@ export function getToolDefinitions() {
     ...notificationTools,
     ...advertisingTools,
     ...settingsTools,
+    ...discoveryTools,
   ];
 }
 
@@ -89,6 +92,19 @@ export async function executeTool(
           ? 'Credentials are set. Call walmart_get_token to verify, then use any tool.'
           : 'No marketplace credentials yet. Call walmart_set_credentials, or set the env vars and restart.',
         docs: 'https://developer.walmart.com/',
+      };
+    }
+
+    case 'walmart_get_rate_budget': {
+      const status = api.getRateLimiterStatus();
+      return {
+        ...status,
+        notes: [
+          'localRemaining = requests this MCP can issue right now under the sliding-window limiter.',
+          'serverTokensRemaining = most recent x-current-token-count from Walmart (null if no API call has been made yet).',
+          'serverReplenishTime = most recent x-next-replenish-time (ISO 8601) — when Walmart will top your bucket back up.',
+          'Walmart Marketplace does not have an OAuth user-token flow; rate limits depend on your seller-account tier.',
+        ],
       };
     }
 
@@ -558,6 +574,31 @@ export async function executeTool(
 
     case 'walmart_get_partner_info':
       return await api.settings.getPartnerInfo();
+
+
+    // ===== Discovery / escape hatch =====
+    case 'walmart_call_endpoint': {
+      const method = (args.method as string).toUpperCase();
+      const path = args.path as string;
+      const params = args.params as Record<string, string | number | boolean> | undefined;
+      const body = args.body as Record<string, unknown> | undefined;
+      const client = api.getMarketplaceClient();
+      switch (method) {
+        case 'GET':    return await client.get(path, params);
+        case 'DELETE': return await client.delete(path, params);
+        case 'POST':   return await client.post(path, body);
+        case 'PUT':    return await client.put(path, body);
+        case 'PATCH':  return await client.post(path, body);
+        default:
+          throw new Error(`Unsupported HTTP method: ${method}`);
+      }
+    }
+
+    case 'walmart_search_endpoints': {
+      const q = args.query as string;
+      const limit = (args.limit as number | undefined) ?? 10;
+      return { query: q, matches: searchEndpoints(q, limit) };
+    }
 
     default:
       throw new Error(`Unknown tool: ${toolName}`);

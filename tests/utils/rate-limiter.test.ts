@@ -81,3 +81,57 @@ describe('RateLimiter', () => {
     }).not.toThrow();
   });
 });
+
+describe('RateLimiter.getStatus', () => {
+  it('returns a defaulted snapshot when no requests have been made', () => {
+    const rl = new RateLimiter(100, 60_000, 'test');
+    const s = rl.getStatus();
+    expect(s.name).toBe('test');
+    expect(s.localMaxRequests).toBe(100);
+    expect(s.localWindowMs).toBe(60_000);
+    expect(s.localCurrentCount).toBe(0);
+    expect(s.localRemaining).toBe(100);
+    expect(s.serverTokensRemaining).toBeNull();
+    expect(s.serverReplenishTime).toBeNull();
+    expect(s.serverTokensSeenAt).toBeNull();
+  });
+
+  it('reflects local sliding-window after acquires', async () => {
+    const rl = new RateLimiter(10, 60_000, 't');
+    await rl.acquireAsync();
+    await rl.acquireAsync();
+    await rl.acquireAsync();
+    const s = rl.getStatus();
+    expect(s.localCurrentCount).toBe(3);
+    expect(s.localRemaining).toBe(7);
+  });
+
+  it('caches Walmart-reported headers across calls', () => {
+    const rl = new RateLimiter(100, 60_000, 't');
+    rl.updateFromHeaders({
+      'x-current-token-count': '42',
+      'x-next-replenish-time': '2026-06-30T00:00:00Z',
+    });
+    const s = rl.getStatus();
+    expect(s.serverTokensRemaining).toBe(42);
+    expect(s.serverReplenishTime).toBe('2026-06-30T00:00:00Z');
+    expect(s.serverTokensSeenAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('updates the seenAt timestamp on each header update', async () => {
+    const rl = new RateLimiter(100, 60_000, 't');
+    rl.updateFromHeaders({ 'x-current-token-count': '10' });
+    const t1 = rl.getStatus().serverTokensSeenAt;
+    await new Promise((r) => setTimeout(r, 10));
+    rl.updateFromHeaders({ 'x-current-token-count': '8' });
+    const t2 = rl.getStatus().serverTokensSeenAt;
+    expect(t2).not.toBe(t1);
+    expect(rl.getStatus().serverTokensRemaining).toBe(8);
+  });
+
+  it('ignores malformed x-current-token-count', () => {
+    const rl = new RateLimiter(100, 60_000, 't');
+    rl.updateFromHeaders({ 'x-current-token-count': 'not-a-number' });
+    expect(rl.getStatus().serverTokensRemaining).toBeNull();
+  });
+});

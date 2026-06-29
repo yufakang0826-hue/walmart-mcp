@@ -1,4 +1,68 @@
 import { z } from 'zod';
+import { SkuSchema, MoneySchema } from './shared-schemas.js';
+
+// Walmart return line — used in approve/reject body.
+// Each entry references one return order line.
+const ReturnOrderLineSchema = z
+  .object({
+    returnOrderLineNumber: z.number().int().min(1),
+    returnReason: z.string().optional(),
+    actionType: z.enum(['APPROVE', 'REJECT', 'KEEP_IT']).optional(),
+  })
+  .passthrough();
+
+const ApproveReturnBodySchema = z
+  .object({
+    returnOrderId: z.string().min(1, 'returnOrderId required'),
+    returnOrderLines: z
+      .array(ReturnOrderLineSchema)
+      .min(1, 'Need at least 1 return order line to approve'),
+  })
+  .strict();
+
+const RejectReturnBodySchema = z
+  .object({
+    returnOrderId: z.string().min(1, 'returnOrderId required'),
+    returnOrderLines: z
+      .array(
+        ReturnOrderLineSchema.and(
+          z.object({
+            rejectionReason: z.string().min(1, 'rejectionReason required for each line'),
+          }),
+        ),
+      )
+      .min(1),
+  })
+  .strict();
+
+// Refund charges per line.
+const ChargeRefundSchema = z
+  .object({
+    chargeType: z.enum(['PRODUCT', 'SHIPPING', 'TAX', 'FEE']),
+    chargeName: z.string().min(1),
+    chargeAmount: MoneySchema,
+    taxRefundAmount: MoneySchema.optional(),
+  })
+  .passthrough();
+
+const RefundBodySchema = z
+  .object({
+    refundReason: z.string().min(1, 'refundReason required'),
+    chargeRefunds: z
+      .array(ChargeRefundSchema)
+      .min(1, 'Need at least 1 charge refund entry'),
+    sku: SkuSchema.optional(),
+  })
+  .passthrough();
+
+// Generate return label body — typically empty or carrier preference.
+const LabelBodySchema = z
+  .object({
+    carrierName: z.string().optional(),
+    carrierId: z.string().optional(),
+    methodCode: z.string().optional(),
+  })
+  .passthrough();
 
 export const returnTools = [
   {
@@ -22,25 +86,30 @@ export const returnTools = [
   },
   {
     name: 'walmart_approve_return',
-    description: 'Approve a customer return request. Required for seller-fulfilled returns.',
+    description:
+      'Approve a customer return request. Required for seller-fulfilled returns. Body must include ' +
+      'returnOrderId and a non-empty returnOrderLines array.',
     inputSchema: {
-      approvalData: z.record(z.string(), z.unknown()).describe('Return approval details including returnOrderId and items'),
+      approvalData: ApproveReturnBodySchema,
     },
   },
   {
     name: 'walmart_reject_return',
-    description: 'Reject a customer return request with a reason.',
+    description:
+      'Reject a customer return request. Each returnOrderLine must include a rejectionReason string.',
     inputSchema: {
-      rejectionData: z.record(z.string(), z.unknown()).describe('Return rejection details including returnOrderId, items, and reason'),
+      rejectionData: RejectReturnBodySchema,
     },
   },
   {
     name: 'walmart_issue_return_refund',
-    description: 'Issue a refund for a returned item. Refund amount cannot exceed the original charge.',
+    description:
+      'Issue a refund for a returned item. refundData requires refundReason and a non-empty ' +
+      'chargeRefunds array. Refund amount cannot exceed the original charge.',
     inputSchema: {
       returnOrderId: z.string().describe('Return order ID'),
       itemId: z.string().describe('Return item ID to refund'),
-      refundData: z.record(z.string(), z.unknown()).describe('Refund details including amount'),
+      refundData: RefundBodySchema,
     },
   },
   {
@@ -49,12 +118,14 @@ export const returnTools = [
     inputSchema: {
       returnOrderId: z.string().describe('Return order ID'),
       itemId: z.string().describe('Return item ID'),
-      labelData: z.record(z.string(), z.unknown()).describe('Label generation details'),
+      labelData: LabelBodySchema,
     },
   },
   {
     name: 'walmart_get_wfs_returns',
-    description: 'Get WFS (Walmart Fulfillment Services) returns. These are view-only as Walmart handles WFS returns.',
+    description:
+      'Get WFS (Walmart Fulfillment Services) returns by sending GET /v3/returns?isWFSEnabled=Y. ' +
+      'For sellers without WFS enrollment, Walmart returns the same set as walmart_get_all_returns.',
     inputSchema: {
       limit: z.number().int().min(1).max(200).optional().describe('Results per page'),
       offset: z.number().int().min(0).optional().describe('Pagination offset'),

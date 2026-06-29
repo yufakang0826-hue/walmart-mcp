@@ -60,3 +60,50 @@ describe('WalmartApiError', () => {
     expect(err.details).toBe(details);
   });
 });
+
+describe('WalmartApiError.toResponse', () => {
+  it('returns a compact payload with only set fields', () => {
+    const err = new WalmartApiError('HTTP 400: X', 400);
+    expect(err.toResponse()).toEqual({ error: 'HTTP 400: X', status: 400 });
+  });
+
+  it('includes details when provided', () => {
+    const details = { errors: [{ code: 'X' }] };
+    const err = new WalmartApiError('HTTP 400: X', 400, details);
+    expect(err.toResponse().details).toBe(details);
+  });
+
+  it('includes endpoint when provided', () => {
+    const err = new WalmartApiError('HTTP 404', 404, undefined, 'GET /v3/returns/count');
+    const payload = err.toResponse();
+    expect(payload.endpoint).toBe('GET /v3/returns/count');
+    expect(payload.isKnownIssue).toBeUndefined();
+  });
+
+  it('includes tool when set after construction (dispatcher injects it)', () => {
+    const err = new WalmartApiError('HTTP 404', 404);
+    err.tool = 'walmart_get_return_count';
+    expect(err.toResponse().tool).toBe('walmart_get_return_count');
+  });
+
+  it('flags isKnownIssue=true whenever a hint is set', () => {
+    const err = new WalmartApiError(
+      'HTTP 404',
+      404,
+      undefined,
+      'GET /v3/returns/count',
+      undefined,
+      'Use walmart_get_all_returns + group by status.',
+    );
+    const payload = err.toResponse();
+    expect(payload.isKnownIssue).toBe(true);
+    expect(payload.hint).toMatch(/walmart_get_all_returns/);
+  });
+
+  it('omits hint and isKnownIssue when no hint', () => {
+    const err = new WalmartApiError('HTTP 400', 400);
+    const payload = err.toResponse();
+    expect('hint' in payload).toBe(false);
+    expect('isKnownIssue' in payload).toBe(false);
+  });
+});

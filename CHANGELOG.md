@@ -4,6 +4,139 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-06-29
+
+### Added
+- **Discovery escape-hatch tools** for endpoints not covered by a dedicated
+  wrapped tool:
+  - `walmart_call_endpoint({ method, path, params?, body? })` calls any
+    Walmart Marketplace endpoint with the same auth / retry / rate-limit
+    pipeline as wrapped tools.
+  - `walmart_search_endpoints({ query, limit? })` searches a 40+ entry
+    catalog (`src/utils/endpoint-catalog.ts`) and suggests the wrapped tool
+    that already covers it.
+- **`walmart_get_rate_budget`**: returns the local sliding-window state plus
+  the latest Walmart-server-reported token bucket
+  (`x-current-token-count` + `x-next-replenish-time`). RateLimiter now
+  exposes `getStatus()`. Includes a note that Walmart does NOT have an
+  OAuth user-token flow; rate limits depend on seller-account tier.
+- **Subcommand bin**: `walmart-mcp [setup|diagnose|version|help]`. A single
+  installed binary handles server start, interactive setup, self-check, and
+  version printing. Argv is forwarded so `walmart-mcp diagnose --export`
+  works as expected.
+- **Multi-MCP-client setup**: setup wizard detects and writes
+  Claude Desktop, Claude Code CLI, Cursor, Cline, Continue.dev,
+  Windsurf, and Zed. Multi-select via comma-separated indices. Zed's
+  nested `mcp.servers` shape is handled.
+- **Three GitHub Actions workflows**:
+  - `release.yml` triggers on `v*.*.*` tag, runs typecheck + tests + build,
+    enforces tag/package.json version agreement, publishes to npm with
+    `--provenance --access public`, and creates a GitHub Release.
+  - `sandbox.yml` runs `npm run test:sandbox` on a weekly cron and on
+    `workflow_dispatch` with environment input (sandbox/production). Uses
+    repository secrets `WALMART_CLIENT_ID/SECRET`, optional Ads creds.
+- **Known Issues table doubled** from 6 to 13 entries: WFS program-gating
+  (404 for sellers without WFS enrollment), Ship-with-Walmart carriers,
+  Walmart Repricer 403 enrollment, Webhooks allowlist, expired report
+  download URLs, and Walmart Connect ads catch-all.
+- **`package.json` files field** now includes `CHANGELOG.md` so npm users
+  can read release notes locally.
+- **Tests**: `+45` new tests across `endpoint-catalog`, `discovery-schema`,
+  `client-configs`, `rate-limiter.getStatus`, `index-wrapper` (zod
+  re-parse path), and the expanded known-issues table. Suite is expected
+  to be 249 passing on completion (up from 114 baseline of v0.3.2).
+
+### Changed
+- **Dispatcher zod re-parse**: the MCP wrapper in `src/index.ts` now runs
+  `z.object(toolDef.inputSchema).parse(rawArgs)` BEFORE calling the
+  dispatcher. This guarantees `.refine()` business rules execute and
+  `.default()` values are filled in, regardless of how the MCP client
+  handled the JSON Schema upstream. ZodErrors are returned as a structured
+  payload with `issues[]` (path + message + code) so the LLM can correct
+  itself without seeing a stack trace.
+- **`WalmartSellerApi`** exposes `getMarketplaceClient()` and
+  `getRateLimiterStatus()` to support the new Discovery + rate-budget
+  tools. The marketplace client (`WalmartApiClient`) exposes
+  `getRateLimiter()`.
+- **Setup wizard** factored its config-write logic into
+  `src/scripts/client-configs.ts` so the single `writeWalmartEntry()`
+  helper handles all 7 supported clients (and the Zed-nested case).
+
+### Notes
+- Still 0 new runtime dependencies. The new bin subcommand uses dynamic
+  `import('./scripts/...')` so the setup / diagnose scripts only load when
+  invoked, keeping cold start of the MCP server fast.
+- npm package size: ~58 KB tarball, ~340 KB unpacked, 82 files.
+
+## [0.4.0] - 2026-06-29
+
+### Added
+- **`npm run diagnose`** self-check: validates Node version, `.env`, required
+  + optional env vars, performs a live Walmart token exchange, and inspects
+  MCP-client config (Claude Desktop / Claude Code CLI / Cursor) for a
+  registered `walmart` server. Exits non-zero on errors; `--export` dumps
+  JSON for bug attachments. Zero new runtime deps.
+- **`npm run setup`** interactive wizard: environment + market choice,
+  masked credential input, live token validation, optional Walmart Connect
+  advertising config, Claude Desktop config write with automatic backup.
+  Never echoes the secret. Claude Desktop only for now.
+- **README "Known Issues" section** documenting 8 Walmart-side endpoint
+  regressions, program-gated tool groups (Repricer / Walmart Connect / WFS),
+  and the `walmart_get_wfs_returns` behavior note.
+- **`src/utils/known-issues.ts`** — single source of truth for hint lookup
+  used by the error layer. 6 documented broken/changed endpoints with
+  workaround hints.
+- **`src/tools/definitions/shared-schemas.ts`** — 9 reusable zod atoms
+  (Sku, Gtin, ShipNode, Money, Iso8601Utc, Quantity, ProcessMode, etc.)
+  used across module definitions.
+- **GitHub Actions CI** (`.github/workflows/ci.yml`): typecheck / vitest /
+  build on Node 22 + 24 (Ubuntu) and Node 22 (Windows). Smoke-runs diagnose
+  and uploads the JSON report as an artifact.
+- **`typecheck` script** (`tsc --noEmit`).
+- **69 new unit + integration tests** across `known-issues`,
+  `shared-schemas`, `strict-schemas` (business-rule refinements), extended
+  `api-error`, and `client-interceptor` (401 retry / 429 / 5xx exponential
+  backoff / endpoint + hint injection). Suite grew 114 -> ~183 passing.
+
+### Changed
+- **Schema hardening** across 54 write tools: replaced
+  `z.record(z.string(), z.unknown())` payloads with strict zod schemas
+  mirroring Walmart spec. Pricing 6, orders 5, fulfillment 7, returns 4,
+  items 5, inventory 4, reports 3, advertising 12, notifications 2,
+  settings 1. Examples of enforced business rules:
+  - PROMO_PRICE: `currentPrice < comparisonPrice`, same currency on both,
+    `effectiveDate >= now + 4h`, duration ≤ 180 days, ≤ 10 promos / SKU,
+    ≤ 10000 SKUs / feed.
+  - INVENTORY: integer non-negative quantities, lag time 0-28 days.
+  - MP_ITEM envelope: required `MPItemFeedHeader` + non-empty `MPItem`;
+    each `Item` has a strict SKU; per-attribute fields passthrough.
+  - REFUND: chargeAmount.amount must be negative.
+  - SUBSCRIPTION: destinationUrl must be HTTPS.
+
+  Only 2 loose `z.record()` payloads remain by design (the generic-feed
+  escape hatch and the WFS `shipmentInfo` sub-field where Walmart docs
+  are sparse).
+
+- **`WalmartApiError`** carries `endpoint`, `tool`, and `hint` fields in
+  addition to status + details. A new `toResponse()` method serializes
+  only set fields and marks `isKnownIssue: true` whenever a hint is
+  present.
+- **API client interceptor** populates `endpoint` (e.g.
+  `GET /v3/returns/count`) and looks up the workaround hint from
+  `known-issues.ts` on every 4xx/5xx.
+- **MCP tool dispatcher** injects the tool name into `WalmartApiError.tool`
+  and emits the enriched payload via `error.toResponse()`. The LLM now
+  receives `{ error, status, endpoint, tool, hint, isKnownIssue }`
+  instead of a bare error string.
+- **`.gitattributes`** added to lock LF line endings on `.ts/.json/.md`
+  files, eliminating spurious CRLF↔LF diffs from Windows editors.
+
+### Notes
+- No new runtime dependencies; all new scripts use Node built-ins
+  (`readline/promises`, `fetch`).
+- `npm test` on Linux requires re-installing native esbuild bins if
+  `node_modules` was copied across OS boundaries — `npm ci` resolves it.
+
 ## [0.3.2] - 2026-06-01
 
 ### Fixed
@@ -46,76 +179,4 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   replacement patterns, so a Walmart access token or client secret with a `$`
   was written mangled — breaking auth on the next restart. The shared
   `upsertEnvVars` helper now uses the function form of `replace` to write values
-  literally. Affected `oauth.ts` (token cache) and `walmart_set_credentials`.
-- Walmart Connect advertising signatures did not cover query-string parameters.
-  GET requests with params (e.g. paginated `getCampaigns`/`getKeywords`) signed
-  only the base path, so the signature would not match the actual request URL.
-  Params are now folded into the request URL before signing, guaranteeing the
-  signed URL is identical to what is sent.
-
-### Changed
-- Extracted the duplicated `.env`-writing logic from `oauth.ts` and the tool
-  dispatcher into a single tested `src/utils/env-file.ts#upsertEnvVars`.
-
-### Added
-- Unit tests for `upsertEnvVars` (including the `$`-corruption regression) and
-  for advertising request signing over the full URL with a query string. Suite
-  grew from 114 to 121 passing tests.
-
-## [0.3.0] - 2026-06-01
-
-### Added
-- `walmart_setup_guide` tool (127 tools total) — returns step-by-step setup
-  instructions and reports what is already configured (environment, market,
-  whether marketplace and advertising credentials are set). Call it first when
-  getting started or when calls fail due to missing credentials.
-
-### Changed
-- Missing-credentials handling now guides the user instead of failing obscurely:
-  - Token refresh throws an actionable error naming the env vars, the
-    `walmart_set_credentials` tool, and the developer-portal URL, instead of
-    surfacing a raw 401.
-  - The startup banner (shown when credentials are absent) is a clear, multi-line
-    checklist pointing to `walmart_setup_guide`.
-
-## [0.2.0] - 2026-06-01
-
-### Fixed
-- `getPartnerInfo` targeted the non-existent `/v3/settings/partner` (404). Walmart
-  has no dedicated partner endpoint; the seller record is returned as the `partner`
-  object on `/v3/settings/shippingprofile`. Repointed the method there and surfaced
-  the `partner` object. Verified against the live sandbox (partnerId 100009).
-- `getItemCount` omitted the mandatory `status` query parameter on `/v3/items/count`
-  (400). Now defaults `status` to `PUBLISHED` and accepts a caller override.
-- Both bugs were discovered by the new live sandbox smoke test. Two remaining sandbox
-  failures are environmental, not code defects: `/v3/inventories` 404 (account not
-  multi-node provisioned) and `/v3/feeds` 520 (Walmart-side server error); the smoke
-  test marks them optional.
-
-### Changed
-- Package renamed to the scoped name `@yufakang0826-hue/walmart-mcp` because the
-  unscoped `walmart-mcp` name on npm belongs to a different author. Added
-  `publishConfig.access: public` so the scoped package can be published openly.
-- README install instructions updated to the scoped package name.
-
-### Added
-- Dedicated unit tests for the Pricing, Reports, and Advertising API modules.
-- `ad-client` signing tests that verify the RSA-SHA256 request signature against a
-  generated public key (canonical string, method casing, missing-key error path).
-- `test-sandbox.mjs` live read-only smoke test plus `npm run test:sandbox` and
-  `npm run test:run` scripts. The smoke test skips gracefully when credentials are
-  absent, so it is CI-safe.
-- Test suite grew from 70 to 112 passing tests across 10 files.
-
-## [0.1.0] - 2026-02-26
-
-### Added
-- Initial release of the Walmart Marketplace MCP server.
-- 126 tools across 12 modules: token management, items, inventory, orders, pricing,
-  feeds, WFS fulfillment, returns, reports, notifications, advertising, settings.
-- OAuth 2.0 with 15-minute token auto-refresh and proactive renewal.
-- Walmart Connect advertising client with separate RSA-SHA256 signed authentication.
-- Feed polling with progressive intervals.
-- Auto-retry on 401, 429, 423, and 5xx responses.
-- Sliding-window rate limiter.
-- Sandbox and production environment support.
+  literally. Affected `oa

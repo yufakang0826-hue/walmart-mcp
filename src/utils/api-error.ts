@@ -1,16 +1,47 @@
 /**
- * Error raised for a non-2xx Walmart API response. Carries the HTTP status and
- * the raw response body so callers (and the LLM) get the full Walmart error
- * detail instead of a lossy `"HTTP 404: Not Found"` string.
+ * Error raised for a non-2xx Walmart API response.
+ *
+ * Carries the HTTP status and the raw response body so callers (and the LLM)
+ * get the full Walmart error detail instead of a lossy `"HTTP 404: Not Found"`
+ * string. Additional context fields (endpoint / tool / hint) are populated by
+ * the request interceptor and the tool dispatcher so the LLM sees:
+ *   - which Walmart endpoint failed
+ *   - which MCP tool triggered it
+ *   - a workaround hint for known-broken Walmart endpoints (Known Issues table)
  */
 export class WalmartApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
     public readonly details?: unknown,
+    /** Method + path of the Walmart call, e.g. "GET /v3/returns/count". */
+    public readonly endpoint?: string,
+    /** MCP tool that triggered the call. Filled in by the dispatcher. */
+    public tool?: string,
+    /** Optional workaround hint from src/utils/known-issues.ts. */
+    public readonly hint?: string,
   ) {
     super(message);
     this.name = 'WalmartApiError';
+  }
+
+  /**
+   * Serialize to the JSON shape returned to the MCP client. Optional fields
+   * are omitted when unset to keep error payloads compact.
+   */
+  toResponse(): Record<string, unknown> {
+    const payload: Record<string, unknown> = {
+      error: this.message,
+      status: this.status,
+    };
+    if (this.details !== undefined) payload.details = this.details;
+    if (this.endpoint) payload.endpoint = this.endpoint;
+    if (this.tool) payload.tool = this.tool;
+    if (this.hint) {
+      payload.hint = this.hint;
+      payload.isKnownIssue = true;
+    }
+    return payload;
   }
 }
 

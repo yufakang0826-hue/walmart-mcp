@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+# Cancel in-flight runs of the same branch when new commits land.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (Node ${{ matrix.node }} / ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        node: ['22', '24']
+        include:
+          # Smoke on Windows too — walmart-mcp users are predominantly on Windows.
+          - os: windows-latest
+            node: '22'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test:run
+
+      - name: Build
+        run: npm run build
+
+      # diagnose without credentials should exit with errors (placeholders)
+      # but should NOT crash. Run with `|| true` so red diagnose doesn't fail CI.
+      - name: Diagnose smoke (no creds expected)
+        shell: bash
+        run: npm run diagnose -- --export || true
+
+      - name: Upload diagnose report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnose-report-${{ matrix.os }}-node${{ matrix.node }}
+          path: walmart-mcp-diagnose.json
+          if-no-files-found: ignore
+
+  # Separate coverage job: runs ONE config (Node 22 / Ubuntu) so the merged
+  # coverage report stays deterministic. Coverage upload also gates on it.
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run coverage
+        run: npm run test:coverage
+        env:
+          # Coverage threshold gating: when threshold isn't met, vitest exits non-zero.
+          CI: 'true'
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/lcov.info
+          fail_ci_if_error: false        # Soft-fail so a transient Codecov outage doesn't break CI
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          if-no-files-found: ignore

@@ -1,9 +1,142 @@
 import { z } from 'zod';
+import { SkuSchema, GtinSchema } from './shared-schemas.js';
+
+// ---------- MP_ITEM feed envelope ----------
+const MpItemEnvelopeSchema = z
+  .object({
+    MPItemFeedHeader: z
+      .object({
+        version: z.string().default('5.0'),
+        sellingChannel: z.literal('marketplace').default('marketplace'),
+        locale: z.string().default('en'),
+        requestId: z.string().optional(),
+      })
+      .passthrough(),
+    MPItem: z
+      .array(
+        z
+          .object({
+            Item: z
+              .object({
+                sku: SkuSchema,
+                productIdentifiers: z
+                  .object({
+                    productIdType: z.enum(['GTIN', 'UPC', 'ISBN', 'EAN']).optional(),
+                    productId: z.string().min(1).optional(),
+                  })
+                  .passthrough()
+                  .optional(),
+              })
+              .passthrough(),
+          })
+          .passthrough(),
+      )
+      .min(1, 'MP_ITEM feed needs at least 1 item')
+      .max(10_000, 'Walmart caps MP_ITEM feeds at ~10000 items per submission'),
+  })
+  .strict();
+
+// ---------- MP_MAINTENANCE feed envelope ----------
+const MpMaintenanceEnvelopeSchema = z
+  .object({
+    MPItemFeedHeader: z
+      .object({
+        version: z.string().default('5.0'),
+        sellingChannel: z.literal('marketplace').default('marketplace'),
+        locale: z.string().default('en'),
+        requestId: z.string().optional(),
+      })
+      .passthrough(),
+    MPItem: z
+      .array(z.object({ Item: z.object({ sku: SkuSchema }).passthrough() }).passthrough())
+      .min(1)
+      .max(10_000),
+  })
+  .strict();
+
+// ---------- MP_RETIRE_ITEM bulk retire ----------
+const BulkRetireSchema = z
+  .object({
+    skus: z
+      .array(z.object({ sku: SkuSchema }).strict())
+      .min(1, 'Need at least 1 SKU to retire')
+      .max(1_000, 'Bulk retire capped at 1000 SKUs per call'),
+  })
+  .strict();
+
+// ---------- Hazmat search ----------
+const HazmatSearchSchema = z
+  .object({
+    sku: SkuSchema.optional(),
+    gtin: GtinSchema.optional(),
+    limit: z.number().int().min(1).max(200).optional(),
+    offset: z.number().int().min(0).optional(),
+  })
+  .passthrough();
+
+// ---------- WFS item feed (feedType=WFS_ITEM) ----------
+// Walmart WFS item feed includes per-item dimensions, weight, and storage attributes.
+const WfsItemEnvelopeSchema = z
+  .object({
+    WFSItemFeedHeader: z
+      .object({
+        version: z.string().default('1.0'),
+        feedDate: z.string().datetime({ offset: true }).optional(),
+      })
+      .passthrough(),
+    WFSItem: z
+      .array(
+        z
+          .object({
+            sku: SkuSchema,
+            wfsAttributes: z
+              .object({
+                weight: z.number().positive().optional(),
+                weightUnit: z.enum(['LB', 'OZ', 'KG', 'G']).optional(),
+                length: z.number().positive().optional(),
+                width: z.number().positive().optional(),
+                height: z.number().positive().optional(),
+                dimensionUnit: z.enum(['IN', 'CM']).optional(),
+              })
+              .passthrough()
+              .optional(),
+          })
+          .passthrough(),
+      )
+      .min(1)
+      .max(10_000),
+  })
+  .strict();
+
+// ---------- OMNI_WFS conversion feed ----------
+// Converts existing SF SKUs to WFS-fulfilled. Body has list of SKUs and unit attributes.
+const ConvertToWfsEnvelopeSchema = z
+  .object({
+    OmniWFSFeedHeader: z
+      .object({
+        version: z.string().default('1.0'),
+      })
+      .passthrough(),
+    OmniWFSItem: z
+      .array(
+        z
+          .object({
+            sku: SkuSchema,
+            convertToWFS: z.boolean().default(true),
+          })
+          .passthrough(),
+      )
+      .min(1)
+      .max(10_000),
+  })
+  .strict();
 
 export const itemTools = [
   {
     name: 'walmart_get_all_items',
-    description: 'Get all items in the seller catalog with pagination. Returns item details including SKU, title, price, publish status, and lifecycle status.',
+    description:
+      'Get all items in the seller catalog with pagination. Returns item details including SKU, ' +
+      'title, price, publish status, and lifecycle status.',
     inputSchema: {
       limit: z.number().int().min(1).max(50).optional().describe('Items per page (default 20, max 50)'),
       offset: z.string().optional().describe('Pagination offset token from previous response'),
@@ -14,32 +147,38 @@ export const itemTools = [
   },
   {
     name: 'walmart_get_item',
-    description: 'Get a single item by SKU. Returns full item details including product attributes, price, inventory, and listing quality.',
+    description:
+      'Get a single item by SKU. Returns full item details including product attributes, price, ' +
+      'inventory, and listing quality.',
     inputSchema: {
       sku: z.string().describe('Seller-defined SKU identifier'),
     },
   },
   {
     name: 'walmart_retire_item',
-    description: 'Retire (unpublish) an item by SKU. This removes the item from the Walmart marketplace. The item can be re-listed later.',
+    description:
+      'Retire (unpublish) an item by SKU. This removes the item from the Walmart marketplace. ' +
+      'The item can be re-listed later by submitting an MP_ITEM feed for the same SKU.',
     inputSchema: {
-      sku: z.string().describe('SKU of the item to retire'),
+      sku: SkuSchema.describe('SKU of the item to retire'),
     },
   },
   {
     name: 'walmart_bulk_retire_items',
-    description: 'Retire multiple items at once by providing a list of SKUs.',
+    description:
+      'Retire multiple items at once. Pass `skus: [{ sku }, ...]`. Walmart caps bulk retire at ' +
+      '~1000 SKUs per call.',
     inputSchema: {
-      skus: z.array(z.object({
-        sku: z.string().describe('SKU to retire'),
-      })).min(1).describe('Array of SKU objects to retire'),
+      skus: BulkRetireSchema.shape.skus,
     },
   },
   {
     name: 'walmart_get_item_count',
-    description: 'Get item count grouped by status. Useful for monitoring catalog health. The status parameter is required by Walmart and defaults to PUBLISHED.',
+    description:
+      'Get item count grouped by status. Useful for monitoring catalog health. The status ' +
+      'parameter is required by Walmart and defaults to PUBLISHED.',
     inputSchema: {
-      status: z.enum(['PUBLISHED', 'UNPUBLISHED', 'STAGE']).optional().describe('Item status to count (required by Walmart; defaults to PUBLISHED)'),
+      status: z.enum(['PUBLISHED', 'UNPUBLISHED', 'STAGE']).optional().describe('Item status to count (defaults to PUBLISHED)'),
       lifecycleStatus: z.enum(['ACTIVE', 'RETIRED']).optional().describe('Filter by lifecycle status'),
       publishedStatus: z.enum(['PUBLISHED', 'UNPUBLISHED', 'STAGE']).optional().describe('Filter by publish status'),
     },
@@ -59,37 +198,49 @@ export const itemTools = [
   },
   {
     name: 'walmart_submit_item_feed',
-    description: 'Submit a bulk item creation feed (feedType=item). Provide item data as JSON. Returns a feedId for tracking. Use walmart_get_feed_status to check progress.',
+    description:
+      'Submit a bulk item creation feed (feedType=item). Envelope: { MPItemFeedHeader, ' +
+      'MPItem: [{ Item: { sku, productIdentifiers, ...attributes } }] }. Per-item content fields ' +
+      'vary by productType — call walmart_get_item_spec first. Returns a feedId.',
     inputSchema: {
-      feedData: z.record(z.string(), z.unknown()).describe('Item feed payload in Walmart feed format'),
+      feedData: MpItemEnvelopeSchema,
     },
   },
   {
     name: 'walmart_submit_item_update_feed',
-    description: 'Submit a bulk item update/maintenance feed (feedType=MP_MAINTENANCE). Use for updating existing item attributes. Returns a feedId.',
+    description:
+      'Submit a bulk item update / maintenance feed (feedType=MP_MAINTENANCE). Same envelope as ' +
+      'item creation but for updating existing SKUs. Returns a feedId.',
     inputSchema: {
-      feedData: z.record(z.string(), z.unknown()).describe('Item update feed payload in Walmart feed format'),
+      feedData: MpMaintenanceEnvelopeSchema,
     },
   },
   {
     name: 'walmart_submit_wfs_item_feed',
-    description: 'Submit a WFS (Walmart Fulfillment Services) item setup feed. Use for items that will be fulfilled by Walmart.',
+    description:
+      'Submit a WFS item setup feed (feedType=WFS_ITEM). Envelope: { WFSItemFeedHeader, ' +
+      'WFSItem: [{ sku, wfsAttributes: { weight, length, width, height, units } }] }. ' +
+      'Returns a feedId.',
     inputSchema: {
-      feedData: z.record(z.string(), z.unknown()).describe('WFS item feed payload'),
+      feedData: WfsItemEnvelopeSchema,
     },
   },
   {
     name: 'walmart_convert_to_wfs',
-    description: 'Convert existing seller-fulfilled items to WFS fulfillment (feedType=OMNI_WFS).',
+    description:
+      'Convert existing seller-fulfilled items to WFS fulfillment (feedType=OMNI_WFS). Envelope: ' +
+      '{ OmniWFSFeedHeader, OmniWFSItem: [{ sku, convertToWFS: true }] }.',
     inputSchema: {
-      feedData: z.record(z.string(), z.unknown()).describe('Conversion feed payload'),
+      feedData: ConvertToWfsEnvelopeSchema,
     },
   },
   {
     name: 'walmart_get_hazmat_items',
-    description: 'Get items on hold for hazmat compliance review (POST /v3/items/onhold/search). These items need compliance documentation before they can be published.',
+    description:
+      'Get items on hold for hazmat compliance review (POST /v3/items/onhold/search). These items ' +
+      'need compliance documentation before they can be published.',
     inputSchema: {
-      requestData: z.record(z.string(), z.unknown()).optional().describe('Optional search filters for the on-hold items query'),
+      requestData: HazmatSearchSchema.optional(),
     },
   },
 ];

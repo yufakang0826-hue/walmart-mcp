@@ -1,5 +1,132 @@
 import { z } from 'zod';
 
+// ---------- Shared Ad atoms ----------
+const StatusSchema = z.enum(['enabled', 'paused', 'completed', 'archived']);
+const CampaignTypeSchema = z.enum(['sponsoredProducts', 'sba', 'video']);
+const TargetingTypeSchema = z.enum(['auto', 'manual']);
+const BudgetTypeSchema = z.enum(['daily', 'total']);
+const MatchTypeSchema = z.enum(['exact', 'phrase', 'broad']);
+const DateOnlySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD');
+
+// Walmart Connect uses arrays at the top level for batch ops.
+const CampaignCreateEntry = z
+  .object({
+    name: z.string().min(1).max(200),
+    campaignType: CampaignTypeSchema,
+    targetingType: TargetingTypeSchema,
+    budgetType: BudgetTypeSchema.default('daily'),
+    dailyBudget: z.number().positive(),
+    totalBudget: z.number().positive().optional(),
+    startDate: DateOnlySchema,
+    endDate: DateOnlySchema.optional(),
+    status: StatusSchema.default('enabled'),
+  })
+  .passthrough()
+  .refine((c) => !c.endDate || c.endDate >= c.startDate, {
+    message: 'endDate must be >= startDate',
+    path: ['endDate'],
+  });
+
+const CampaignUpdateEntry = z
+  .object({
+    campaignId: z.number().int().positive(),
+    name: z.string().min(1).max(200).optional(),
+    status: StatusSchema.optional(),
+    dailyBudget: z.number().positive().optional(),
+    totalBudget: z.number().positive().optional(),
+    endDate: DateOnlySchema.optional(),
+  })
+  .passthrough();
+
+const AdGroupCreateEntry = z
+  .object({
+    campaignId: z.number().int().positive(),
+    name: z.string().min(1).max(200),
+    status: StatusSchema.default('enabled'),
+    defaultBid: z.number().positive(),
+  })
+  .passthrough();
+
+const AdGroupUpdateEntry = z
+  .object({
+    adGroupId: z.number().int().positive(),
+    name: z.string().min(1).max(200).optional(),
+    status: StatusSchema.optional(),
+    defaultBid: z.number().positive().optional(),
+  })
+  .passthrough();
+
+const AdItemAddEntry = z
+  .object({
+    campaignId: z.number().int().positive(),
+    adGroupId: z.number().int().positive(),
+    itemId: z.string().min(1),
+    bid: z.number().positive(),
+    status: StatusSchema.default('enabled'),
+  })
+  .passthrough();
+
+const AdItemUpdateEntry = z
+  .object({
+    adItemId: z.number().int().positive(),
+    bid: z.number().positive().optional(),
+    status: StatusSchema.optional(),
+  })
+  .passthrough();
+
+const KeywordAddEntry = z
+  .object({
+    campaignId: z.number().int().positive(),
+    adGroupId: z.number().int().positive(),
+    keywordText: z.string().min(1).max(80),
+    matchType: MatchTypeSchema,
+    bid: z.number().positive(),
+    state: StatusSchema.default('enabled'),
+  })
+  .passthrough();
+
+const KeywordUpdateEntry = z
+  .object({
+    keywordId: z.number().int().positive(),
+    bid: z.number().positive().optional(),
+    state: StatusSchema.optional(),
+  })
+  .passthrough();
+
+const PlacementBidEntry = z
+  .object({
+    campaignId: z.number().int().positive(),
+    placement: z.string().min(1),
+    bidMultiplier: z.number().positive(),
+  })
+  .passthrough();
+
+const PlatformBidEntry = z
+  .object({
+    campaignId: z.number().int().positive(),
+    platform: z.enum(['desktop', 'mobile', 'app']),
+    bidMultiplier: z.number().positive(),
+  })
+  .passthrough();
+
+const ReportSnapshotCreateSchema = z
+  .object({
+    reportType: z.enum([
+      'campaign',
+      'adGroup',
+      'keyword',
+      'item',
+      'pageType',
+      'platform',
+      'placement',
+    ]),
+    reportDate: DateOnlySchema,
+    format: z.enum(['JSON', 'CSV']).default('JSON'),
+  })
+  .passthrough();
+
 export const advertisingTools = [
   // ===== Campaigns =====
   {
@@ -7,189 +134,205 @@ export const advertisingTools = [
     description: 'List Walmart Connect advertising campaigns. Supports Sponsored Products (auto/keyword), Sponsored Brands, and Sponsored Videos.',
     inputSchema: {
       campaignId: z.number().int().optional().describe('Filter by campaign ID'),
-      status: z.string().optional().describe('Filter by status: enabled, paused, completed'),
+      status: StatusSchema.optional().describe('Filter by status'),
       name: z.string().optional().describe('Filter by campaign name'),
     },
   },
   {
     name: 'walmart_ad_create_campaign',
-    description: 'Create a new advertising campaign. Types: sponsoredProducts (auto/manual), sba (Sponsored Brands), video.',
+    description:
+      'Create new advertising campaign(s). Body is an ARRAY of campaign objects (Walmart Connect ' +
+      'batch API). Each: { name, campaignType, targetingType, budgetType, dailyBudget, startDate ' +
+      '(YYYY-MM-DD), endDate?, status }. Default budgetType=daily, status=enabled.',
     inputSchema: {
-      campaignData: z.record(z.string(), z.unknown()).describe('Campaign config including name, campaignType, targetingType, budgetType, dailyBudget, startDate'),
+      campaignData: z.array(CampaignCreateEntry).min(1, 'Need at least 1 campaign'),
     },
   },
   {
     name: 'walmart_ad_update_campaign',
-    description: 'Update an existing advertising campaign (name, budget, status, dates).',
+    description:
+      'Update existing campaigns. Body is ARRAY; each entry needs campaignId; updatable: name, ' +
+      'status, dailyBudget, totalBudget, endDate.',
     inputSchema: {
-      campaignData: z.record(z.string(), z.unknown()).describe('Updated campaign data including campaignId'),
+      campaignData: z.array(CampaignUpdateEntry).min(1),
     },
   },
   {
     name: 'walmart_ad_delete_campaign',
-    description: 'Delete a pre-launch campaign (not yet started). Running campaigns should be paused instead.',
+    description: 'Archive/delete a campaign by ID. Cannot be undone.',
     inputSchema: {
-      deleteData: z.record(z.string(), z.unknown()).describe('Deletion data including campaignId'),
+      campaignId: z.number().int().positive().describe('Campaign ID to delete'),
     },
   },
 
   // ===== Ad Groups =====
   {
     name: 'walmart_ad_get_ad_groups',
-    description: 'List ad groups within a campaign. Ad groups organize items and keywords with shared bids.',
+    description: 'List ad groups, optionally filtered by campaign.',
     inputSchema: {
       campaignId: z.number().int().optional().describe('Filter by campaign ID'),
       adGroupId: z.number().int().optional().describe('Filter by ad group ID'),
+      status: StatusSchema.optional(),
     },
   },
   {
     name: 'walmart_ad_create_ad_groups',
-    description: 'Create ad groups in a campaign. Each group can have its own default bid and targeting.',
+    description:
+      'Create ad groups. Body is ARRAY; each entry needs campaignId, name, defaultBid. Status ' +
+      'defaults to enabled.',
     inputSchema: {
-      adGroupData: z.record(z.string(), z.unknown()).describe('Ad group config including campaignId, name, and defaultBid'),
+      groupData: z.array(AdGroupCreateEntry).min(1),
     },
   },
   {
     name: 'walmart_ad_update_ad_groups',
-    description: 'Update ad group settings (name, bid, status).',
+    description: 'Update ad groups. Body is ARRAY; each needs adGroupId; updatable: name, status, defaultBid.',
     inputSchema: {
-      adGroupData: z.record(z.string(), z.unknown()).describe('Updated ad group data including adGroupId'),
+      groupData: z.array(AdGroupUpdateEntry).min(1),
     },
   },
 
   // ===== Ad Items =====
   {
     name: 'walmart_ad_get_ad_items',
-    description: 'List advertised items. Shows which products are being promoted in each ad group.',
+    description: 'List ad items (SKUs in ad groups).',
     inputSchema: {
-      campaignId: z.number().int().optional().describe('Filter by campaign ID'),
-      adGroupId: z.number().int().optional().describe('Filter by ad group ID'),
-      status: z.string().optional().describe('Filter by item status'),
+      campaignId: z.number().int().optional(),
+      adGroupId: z.number().int().optional(),
     },
   },
   {
     name: 'walmart_ad_add_ad_items',
-    description: 'Add items to an ad group for advertising. Items must be published on Walmart.',
+    description:
+      'Add SKUs to an ad group. Body is ARRAY; each entry needs campaignId, adGroupId, itemId, bid.',
     inputSchema: {
-      itemData: z.record(z.string(), z.unknown()).describe('Items to add including campaignId, adGroupId, and item IDs/SKUs'),
+      itemData: z.array(AdItemAddEntry).min(1),
     },
   },
   {
     name: 'walmart_ad_update_ad_items',
-    description: 'Update ad item settings (bid, status).',
+    description: 'Update ad items. Body is ARRAY; each needs adItemId; updatable: bid, status.',
     inputSchema: {
-      itemData: z.record(z.string(), z.unknown()).describe('Updated item data including adItemId'),
+      itemData: z.array(AdItemUpdateEntry).min(1),
     },
   },
 
   // ===== Keywords =====
   {
     name: 'walmart_ad_get_keywords',
-    description: 'List keywords for manual keyword campaigns. Shows match type, bid, and status.',
+    description: 'List keywords in an ad group.',
     inputSchema: {
-      campaignId: z.number().int().optional().describe('Filter by campaign ID'),
-      adGroupId: z.number().int().optional().describe('Filter by ad group ID'),
-      keywordId: z.number().int().optional().describe('Filter by keyword ID'),
+      campaignId: z.number().int().optional(),
+      adGroupId: z.number().int().optional(),
+      state: StatusSchema.optional(),
     },
   },
   {
     name: 'walmart_ad_add_keywords',
-    description: 'Add targeting keywords to a manual campaign ad group. Match types: exact, phrase, broad.',
+    description:
+      'Add keywords to an ad group. Body is ARRAY; each entry needs campaignId, adGroupId, ' +
+      'keywordText, matchType (exact|phrase|broad), bid.',
     inputSchema: {
-      keywordData: z.record(z.string(), z.unknown()).describe('Keywords to add including campaignId, adGroupId, keywords with matchType and bid'),
+      keywordData: z.array(KeywordAddEntry).min(1),
     },
   },
   {
     name: 'walmart_ad_update_keywords',
-    description: 'Update keyword bids, match types, or status.',
+    description: 'Update keywords. Body is ARRAY; each needs keywordId; updatable: bid, state.',
     inputSchema: {
-      keywordData: z.record(z.string(), z.unknown()).describe('Updated keyword data including keywordId'),
+      keywordData: z.array(KeywordUpdateEntry).min(1),
     },
   },
   {
     name: 'walmart_ad_get_keyword_analytics',
-    description: 'Get keyword performance analytics: impressions, clicks, spend, sales, ACOS, ROAS.',
+    description: 'Get keyword performance analytics (impressions, clicks, conversions).',
     inputSchema: {
-      analyticsData: z.record(z.string(), z.unknown()).describe('Analytics query with date range, campaignId, and optional filters'),
+      campaignId: z.number().int().optional(),
+      adGroupId: z.number().int().optional(),
+      keywordId: z.number().int().optional(),
+      startDate: DateOnlySchema.optional(),
+      endDate: DateOnlySchema.optional(),
     },
   },
 
-  // ===== Bid Multipliers =====
+  // ===== Placement / Platform Bids =====
   {
     name: 'walmart_ad_create_placement_bids',
-    description: 'Set placement bid multipliers. Adjust bids for Buy Box, Search In-grid, and other placements.',
+    description:
+      'Set placement-specific bid multipliers. Body is ARRAY; each entry needs campaignId, ' +
+      'placement, bidMultiplier (e.g. 1.25 for +25%).',
     inputSchema: {
-      bidData: z.record(z.string(), z.unknown()).describe('Placement bid config including campaignId and placement multipliers'),
+      bidData: z.array(PlacementBidEntry).min(1),
     },
   },
   {
     name: 'walmart_ad_get_placement_bids',
-    description: 'Get current placement bid multipliers for a campaign.',
+    description: 'Get current placement bids for a campaign.',
     inputSchema: {
-      campaignId: z.number().int().optional().describe('Campaign ID'),
+      campaignId: z.number().int().describe('Campaign ID'),
     },
   },
   {
     name: 'walmart_ad_create_platform_bids',
-    description: 'Set platform bid multipliers for desktop vs mobile targeting.',
+    description:
+      'Set platform-specific (desktop/mobile/app) bid multipliers. Body is ARRAY; each entry ' +
+      'needs campaignId, platform, bidMultiplier.',
     inputSchema: {
-      bidData: z.record(z.string(), z.unknown()).describe('Platform bid config including campaignId and platform multipliers'),
+      bidData: z.array(PlatformBidEntry).min(1),
     },
   },
 
-  // ===== Reports & Stats =====
+  // ===== Reports / Insights =====
   {
     name: 'walmart_ad_create_report_snapshot',
-    description: 'Request an advertising performance report. Types: campaign, adGroup, adItem, keyword. Reports are async.',
+    description:
+      'Request a Walmart Connect report snapshot. reportType: campaign|adGroup|keyword|item|' +
+      'pageType|platform|placement. reportDate is YYYY-MM-DD.',
     inputSchema: {
-      reportData: z.record(z.string(), z.unknown()).describe('Report request including reportType, dateRange, and metrics'),
+      reportData: ReportSnapshotCreateSchema,
     },
   },
   {
     name: 'walmart_ad_get_report_snapshots',
-    description: 'Get status and download URL for advertising report snapshots.',
+    description: 'List previously requested report snapshots.',
     inputSchema: {
-      snapshotId: z.string().optional().describe('Specific snapshot ID'),
-      reportType: z.string().optional().describe('Filter by report type'),
+      reportType: z.string().optional(),
     },
   },
   {
     name: 'walmart_ad_get_realtime_stats',
-    description: 'Get near-real-time advertising statistics. Data is delayed by ~3 hours.',
+    description: 'Get realtime campaign stats (latency ~1-5 min, partial data).',
     inputSchema: {
-      statsData: z.record(z.string(), z.unknown()).describe('Stats query with date range, campaignIds, and metric selections'),
+      campaignId: z.number().int().optional(),
     },
   },
   {
     name: 'walmart_ad_get_latest_report_date',
-    description: 'Get the latest available date for advertising reports. Use this to determine date range for report requests.',
+    description: 'Get the latest available data date for analytic reports.',
     inputSchema: {},
   },
-
-  // ===== Recommendations & Insights =====
   {
     name: 'walmart_ad_get_item_recommendations',
-    description: 'Get item recommendations for advertising. Suggests which items would benefit most from advertising.',
+    description: 'Get item recommendations to add to a campaign based on performance.',
     inputSchema: {
-      recommendationData: z.record(z.string(), z.unknown()).describe('Recommendation query parameters'),
+      campaignId: z.number().int().describe('Campaign ID'),
     },
   },
   {
     name: 'walmart_ad_get_keyword_recommendations',
-    description: 'Get keyword suggestions for a campaign based on item catalog and category.',
+    description: 'Get keyword suggestions for an ad group based on indexed items.',
     inputSchema: {
-      recommendationData: z.record(z.string(), z.unknown()).describe('Keyword recommendation query including items or category'),
+      adGroupId: z.number().int().describe('Ad group ID'),
+      campaignId: z.number().int().optional(),
     },
   },
   {
     name: 'walmart_ad_get_search_trends',
-    description: 'Get top search trends on Walmart.com. Discover trending keywords for campaign targeting.',
+    description: 'Get top search trends on Walmart.com to inform keyword strategy.',
     inputSchema: {
-      trendData: z.record(z.string(), z.unknown()).describe('Search trend query including category and date range'),
+      category: z.string().optional(),
     },
   },
-
-  // ===== Sponsored Brands =====
   {
     name: 'walmart_ad_get_sba_profile',
     description: 'Get Sponsored Brands (SBA) advertiser profile. Shows eligibility, brand info, and account status.',

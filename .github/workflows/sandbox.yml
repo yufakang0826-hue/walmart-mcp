@@ -1,0 +1,73 @@
+name: Sandbox Smoke
+
+# Triggered manually (workflow_dispatch) or weekly to detect Walmart sandbox
+# regressions before they hit production users. Requires repo secrets:
+#   WALMART_CLIENT_ID
+#   WALMART_CLIENT_SECRET
+# Optional:
+#   WALMART_AD_CONSUMER_ID
+#   WALMART_AD_PRIVATE_KEY
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'sandbox or production (default sandbox)'
+        type: choice
+        required: true
+        default: sandbox
+        options:
+          - sandbox
+          - production
+  schedule:
+    # Mondays at 09:00 UTC.
+    - cron: '0 9 * * 1'
+
+jobs:
+  smoke:
+    name: Live ${{ inputs.environment || 'sandbox' }} smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run smoke
+        env:
+          WALMART_CLIENT_ID: ${{ secrets.WALMART_CLIENT_ID }}
+          WALMART_CLIENT_SECRET: ${{ secrets.WALMART_CLIENT_SECRET }}
+          WALMART_ENVIRONMENT: ${{ inputs.environment || 'sandbox' }}
+          WALMART_MARKET: us
+          WALMART_AD_CONSUMER_ID: ${{ secrets.WALMART_AD_CONSUMER_ID }}
+          WALMART_AD_PRIVATE_KEY: ${{ secrets.WALMART_AD_PRIVATE_KEY }}
+        run: node test-sandbox.mjs
+
+      - name: Diagnose (with --export)
+        if: always()
+        env:
+          WALMART_CLIENT_ID: ${{ secrets.WALMART_CLIENT_ID }}
+          WALMART_CLIENT_SECRET: ${{ secrets.WALMART_CLIENT_SECRET }}
+          WALMART_ENVIRONMENT: ${{ inputs.environment || 'sandbox' }}
+          WALMART_MARKET: us
+        run: npm run diagnose -- --export || true
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-smoke-${{ inputs.environment || 'sandbox' }}
+          path: |
+            walmart-mcp-diagnose.json
+          if-no-files-found: ignore

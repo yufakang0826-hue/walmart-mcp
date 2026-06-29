@@ -1,45 +1,184 @@
 import { z } from 'zod';
+import { SkuSchema, Iso8601UtcSchema, QuantitySchema } from './shared-schemas.js';
+
+// ---------- Shared atoms for WFS ----------
+const PostalAddressSchema = z
+  .object({
+    addressLine1: z.string().min(1).max(200),
+    addressLine2: z.string().max(200).optional(),
+    city: z.string().min(1).max(100),
+    state: z.string().min(2).max(50),
+    postalCode: z.string().min(3).max(20),
+    country: z.string().length(3, 'country must be ISO 3166-1 alpha-3 (USA, MEX, etc.)').default('USA'),
+    phone: z.string().optional(),
+    name: z.string().optional(),
+  })
+  .passthrough();
+
+const PackageWeightSchema = z
+  .object({
+    value: z.number().positive(),
+    unit: z.enum(['LB', 'OZ', 'KG', 'G']).default('LB'),
+  })
+  .strict();
+
+const PackageDimensionsSchema = z
+  .object({
+    length: z.number().positive(),
+    width: z.number().positive(),
+    height: z.number().positive(),
+    unit: z.enum(['IN', 'CM']).default('IN'),
+  })
+  .strict();
+
+// ---------- WFS Inbound order ----------
+const InboundOrderBodySchema = z
+  .object({
+    inboundOrderItems: z
+      .array(
+        z
+          .object({
+            sku: SkuSchema,
+            expectedQuantity: z.number().int().positive(),
+            packagingType: z.enum(['CASE', 'PALLET', 'EACH']).optional(),
+          })
+          .passthrough(),
+      )
+      .min(1, 'Inbound order needs at least 1 item'),
+    shipFromAddress: PostalAddressSchema,
+    expectedArrivalDate: Iso8601UtcSchema.optional(),
+  })
+  .passthrough();
+
+// ---------- WFS tracking update ----------
+const TrackingUpdateSchema = z
+  .object({
+    shipmentId: z.string().min(1, 'shipmentId required'),
+    carrier: z.string().min(1, 'carrier required'),
+    trackingNumber: z.string().min(1, 'trackingNumber required'),
+    shipDateTime: Iso8601UtcSchema.optional(),
+  })
+  .passthrough();
+
+// ---------- WFS label discard ----------
+const DiscardLabelSchema = z
+  .object({
+    trackingNumber: z.string().min(1),
+    carrierShortName: z.enum(['USPS', 'FedEx', 'UPS', 'DHL']),
+  })
+  .strict();
+
+// ---------- WFS Multichannel order ----------
+const McsOrderBodySchema = z
+  .object({
+    orderId: z.string().min(1),
+    items: z
+      .array(
+        z
+          .object({
+            sku: SkuSchema,
+            quantity: z.number().int().positive(),
+          })
+          .passthrough(),
+      )
+      .min(1),
+    shippingAddress: PostalAddressSchema,
+    serviceLevel: z.enum(['STANDARD', 'EXPEDITED', 'NEXT_DAY']).default('STANDARD'),
+  })
+  .passthrough();
+
+const McsCancelSchema = z
+  .object({
+    orderId: z.string().min(1),
+    reason: z.string().optional(),
+  })
+  .passthrough();
+
+// ---------- WFS carrier rate quote ----------
+const RateQuoteSchema = z
+  .object({
+    fromAddress: PostalAddressSchema,
+    toAddress: PostalAddressSchema,
+    packages: z
+      .array(
+        z
+          .object({
+            weight: PackageWeightSchema,
+            dimensions: PackageDimensionsSchema.optional(),
+            quantity: z.number().int().positive().default(1),
+          })
+          .strict(),
+      )
+      .min(1, 'Need at least 1 package'),
+  })
+  .passthrough();
+
+// ---------- WFS carrier shipment booking ----------
+const CarrierBookingSchema = z
+  .object({
+    quoteId: z.string().min(1, 'quoteId required'),
+    shipmentInfo: z.record(z.string(), z.unknown()).optional(),
+  })
+  .passthrough();
+
+// ---------- WFS pickup scheduling ----------
+const PickupSchedulingSchema = z
+  .object({
+    shipmentId: z.string().min(1),
+    pickupDate: Iso8601UtcSchema,
+    pickupTimeWindow: z
+      .object({
+        start: z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, 'start must be HH:MM'),
+        end: z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, 'end must be HH:MM'),
+      })
+      .strict()
+      .optional(),
+    pickupAddress: PostalAddressSchema,
+  })
+  .passthrough();
 
 export const fulfillmentTools = [
   // ===== WFS Inbound =====
   {
     name: 'walmart_create_inbound_order',
-    description: 'Create a WFS (Walmart Fulfillment Services) inbound shipment order. Send inventory to Walmart fulfillment centers.',
+    description:
+      'Create a WFS inbound shipment order. Required: inboundOrderItems[] (sku + expectedQuantity), ' +
+      'shipFromAddress (full postal address). Optional: expectedArrivalDate (ISO 8601 UTC).',
     inputSchema: {
-      orderData: z.record(z.string(), z.unknown()).describe('Inbound order details including items, quantities, and ship-from address'),
+      orderData: InboundOrderBodySchema,
     },
   },
   {
     name: 'walmart_get_inbound_shipments',
     description: 'Get list of WFS inbound shipments with optional filtering by status.',
     inputSchema: {
-      limit: z.number().int().min(1).max(200).optional().describe('Results per page'),
-      offset: z.number().int().min(0).optional().describe('Pagination offset'),
-      status: z.string().optional().describe('Filter by shipment status'),
+      limit: z.number().int().min(1).max(200).optional(),
+      offset: z.number().int().min(0).optional(),
+      status: z.string().optional(),
     },
   },
   {
     name: 'walmart_get_inbound_errors',
     description: 'Get inbound shipment errors. Use to diagnose issues with WFS inbound orders.',
     inputSchema: {
-      inboundOrderId: z.string().optional().describe('Filter by inbound order ID'),
-      shipmentId: z.string().optional().describe('Filter by shipment ID'),
+      inboundOrderId: z.string().optional(),
+      shipmentId: z.string().optional(),
     },
   },
   {
     name: 'walmart_get_shipment_items',
     description: 'Get SKU-level details for a WFS shipment including quantities received and expected.',
     inputSchema: {
-      shipmentId: z.string().optional().describe('Shipment ID to get items for'),
-      limit: z.number().int().min(1).max(200).optional().describe('Results per page'),
-      offset: z.number().int().min(0).optional().describe('Pagination offset'),
+      shipmentId: z.string().optional(),
+      limit: z.number().int().min(1).max(200).optional(),
+      offset: z.number().int().min(0).optional(),
     },
   },
   {
     name: 'walmart_get_shipment_quantities',
     description: 'Get shipment quantity breakdown: expected, received, and discrepancies.',
     inputSchema: {
-      shipmentId: z.string().optional().describe('Shipment ID'),
+      shipmentId: z.string().optional(),
     },
   },
   {
@@ -51,9 +190,11 @@ export const fulfillmentTools = [
   },
   {
     name: 'walmart_update_shipment_tracking',
-    description: 'Update tracking information for a WFS inbound shipment.',
+    description:
+      'Update tracking information for a WFS inbound shipment. Required: shipmentId, carrier, ' +
+      'trackingNumber. Optional: shipDateTime (ISO 8601 UTC).',
     inputSchema: {
-      trackingData: z.record(z.string(), z.unknown()).describe('Tracking update data including shipmentId, carrier, and tracking number'),
+      trackingData: TrackingUpdateSchema,
     },
   },
   {
@@ -82,9 +223,11 @@ export const fulfillmentTools = [
   },
   {
     name: 'walmart_discard_label',
-    description: 'Void/discard a previously purchased shipping label. Must be done before carrier pickup.',
+    description:
+      'Void/discard a previously purchased shipping label. Required: trackingNumber + ' +
+      'carrierShortName (USPS|FedEx|UPS|DHL). Must be done before carrier pickup.',
     inputSchema: {
-      labelData: z.record(z.string(), z.unknown()).describe('Label discard details including trackingNumber and carrierShortName'),
+      labelData: DiscardLabelSchema,
     },
   },
   {
@@ -98,16 +241,18 @@ export const fulfillmentTools = [
   // ===== Multichannel Solutions =====
   {
     name: 'walmart_create_mcs_order',
-    description: 'Create a WFS multichannel order. Ship WFS inventory for orders from other sales channels (non-Walmart).',
+    description:
+      'Create a WFS multichannel order. Required: orderId, items[] (sku + quantity), ' +
+      'shippingAddress. Optional: serviceLevel (STANDARD|EXPEDITED|NEXT_DAY).',
     inputSchema: {
-      orderData: z.record(z.string(), z.unknown()).describe('Multichannel order details including items, shipping address, and service level'),
+      orderData: McsOrderBodySchema,
     },
   },
   {
     name: 'walmart_cancel_mcs_order',
     description: 'Cancel a WFS multichannel order before it ships.',
     inputSchema: {
-      cancelData: z.record(z.string(), z.unknown()).describe('Cancellation details including orderId'),
+      cancelData: McsCancelSchema,
     },
   },
   {
@@ -121,16 +266,18 @@ export const fulfillmentTools = [
   // ===== WFS Carrier =====
   {
     name: 'walmart_get_carrier_rate_quotes',
-    description: 'Get shipping rate quotes from WFS carriers for an inbound shipment.',
+    description:
+      'Get shipping rate quotes from WFS carriers. Required: fromAddress, toAddress, packages[] ' +
+      '(each with weight). Returns rate options per carrier.',
     inputSchema: {
-      quoteData: z.record(z.string(), z.unknown()).describe('Quote request details including package dimensions, weight, and destination'),
+      quoteData: RateQuoteSchema,
     },
   },
   {
     name: 'walmart_book_carrier_shipment',
-    description: 'Book a carrier shipment using a WFS carrier rate quote.',
+    description: 'Book a carrier shipment using a WFS carrier rate quote. Required: quoteId.',
     inputSchema: {
-      bookingData: z.record(z.string(), z.unknown()).describe('Booking details including quoteId and shipment info'),
+      bookingData: CarrierBookingSchema,
     },
   },
   {
@@ -142,9 +289,11 @@ export const fulfillmentTools = [
   },
   {
     name: 'walmart_schedule_carrier_pickup',
-    description: 'Schedule a carrier pickup for a WFS inbound shipment.',
+    description:
+      'Schedule a carrier pickup for a WFS inbound shipment. Required: shipmentId, pickupDate ' +
+      '(ISO 8601 UTC), pickupAddress. Optional pickupTimeWindow (HH:MM format).',
     inputSchema: {
-      pickupData: z.record(z.string(), z.unknown()).describe('Pickup scheduling details including date, time window, and address'),
+      pickupData: PickupSchedulingSchema,
     },
   },
 ];

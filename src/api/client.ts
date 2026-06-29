@@ -5,6 +5,7 @@ import { WalmartOAuthClient } from '../auth/oauth.js';
 import { apiLogger, truncateData } from '../utils/logger.js';
 import { RateLimiter } from '../utils/rate-limiter.js';
 import { WalmartApiError, formatWalmartError } from '../utils/api-error.js';
+import { findKnownIssueHint } from '../utils/known-issues.js';
 
 export class WalmartApiClient {
   private http: AxiosInstance;
@@ -34,6 +35,11 @@ export class WalmartApiClient {
 
   getAuthClient(): WalmartOAuthClient {
     return this.authClient;
+  }
+
+  /** Expose the rate limiter so the rate-budget MCP tool can snapshot it. */
+  getRateLimiter(): RateLimiter {
+    return this.rateLimiter;
   }
 
   private setupInterceptors(): void {
@@ -143,13 +149,25 @@ export class WalmartApiClient {
           error.response.data,
         );
 
+        // Build endpoint label for error context: "GET /v3/items?limit=5".
+        const method = (config.method ?? 'GET').toUpperCase();
+        const path = config.url ?? '';
+        const endpoint = `${method} ${path}`;
+
+        // Look up workaround hint for known-broken Walmart endpoints. Strip
+        // the query string so URL parameters do not interfere with the regex
+        // match.
+        const pathForLookup = path.split('?')[0] ?? path;
+        const hint = findKnownIssueHint(method, pathForLookup);
+
         apiLogger.error(`API Error: ${errorMsg}`, {
           url: config.url,
           status,
           response: truncateData(error.response.data),
+          ...(hint ? { hint } : {}),
         });
 
-        throw new WalmartApiError(errorMsg, status, error.response.data);
+        throw new WalmartApiError(errorMsg, status, error.response.data, endpoint, undefined, hint);
       },
     );
   }

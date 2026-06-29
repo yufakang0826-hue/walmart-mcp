@@ -1,0 +1,26 @@
+# Default: text files use LF on checkout regardless of OS,
+# binary files are not touched.
+* text=auto eol=lf
+
+# Source code — always LF (avoids spurious diffs from Windows editors).
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Shell / Windows scripts — keep platform-native.
+*.sh text eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+
+# Binary — never touch.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.pdf binary

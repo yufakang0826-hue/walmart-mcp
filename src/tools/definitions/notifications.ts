@@ -1,18 +1,48 @@
 import { z } from 'zod';
 
+const WalmartEventTypeSchema = z.enum([
+  'PO_CREATED',
+  'PO_LINE_AUTOCANCELLED',
+  'OFFER_UNPUBLISHED',
+  'BUYBOX_CHANGED',
+  'PRICE_CHANGED',
+  'INVENTORY_CHANGED',
+  'RETURN_CREATED',
+  'ITEM_PUBLISHED',
+  'ITEM_UNPUBLISHED',
+]);
+
+const SubscriptionBodySchema = z
+  .object({
+    eventType: WalmartEventTypeSchema,
+    destinationUrl: z
+      .string()
+      .url('destinationUrl must be a valid HTTPS URL'),
+    format: z.enum(['JSON', 'XML']).default('JSON'),
+    isActive: z.boolean().default(true),
+  })
+  .passthrough()
+  .refine((s) => s.destinationUrl.startsWith('https://'), {
+    message: 'Walmart requires HTTPS for webhook destinations',
+    path: ['destinationUrl'],
+  });
+
 export const notificationTools = [
   {
     name: 'walmart_create_subscription',
-    description: 'Create a webhook subscription for event notifications. Events: PO_CREATED, PO_LINE_AUTOCANCELLED, OFFER_UNPUBLISHED, BUYBOX_CHANGED, etc.',
+    description:
+      'Create a webhook subscription for event notifications. Required: eventType + destinationUrl ' +
+      '(HTTPS only). Events: PO_CREATED, PO_LINE_AUTOCANCELLED, OFFER_UNPUBLISHED, BUYBOX_CHANGED, ' +
+      'PRICE_CHANGED, INVENTORY_CHANGED, RETURN_CREATED, ITEM_PUBLISHED, ITEM_UNPUBLISHED.',
     inputSchema: {
-      subscriptionData: z.record(z.string(), z.unknown()).describe('Subscription details including eventType, destinationUrl, and optional filters'),
+      subscriptionData: SubscriptionBodySchema,
     },
   },
   {
     name: 'walmart_get_subscriptions',
     description: 'List all webhook subscriptions with optional event type filter.',
     inputSchema: {
-      eventType: z.string().optional().describe('Filter by event type'),
+      eventType: WalmartEventTypeSchema.optional().describe('Filter by event type'),
     },
   },
   {
@@ -27,7 +57,7 @@ export const notificationTools = [
     description: 'Update an existing webhook subscription (e.g., change URL or status).',
     inputSchema: {
       subscriptionId: z.string().describe('Subscription ID to update'),
-      subscriptionData: z.record(z.string(), z.unknown()).describe('Updated subscription configuration'),
+      subscriptionData: SubscriptionBodySchema,
     },
   },
   {

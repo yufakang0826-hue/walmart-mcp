@@ -34,4 +34,9 @@ export const tokenManagementTools = [
     description: 'Get step-by-step setup instructions and a checklist for configuring this MCP server. Reports what is already configured (environment, market, whether marketplace and advertising credentials are set) and what is still needed. Call this first when getting started or when calls fail due to missing credentials.',
     inputSchema: {},
   },
+  {
+    name: 'walmart_get_rate_budget',
+    description: 'Get current rate-limit budget for the Walmart Marketplace client. Returns the local sliding-window state (requests issued by this MCP in the last 60s) plus the latest Walmart-server-reported token bucket (x-current-token-count + x-next-replenish-time from the most recent response). Call this before bulk operations to see how much headroom you have. Note: Walmart Marketplace uses client_credentials + per-endpoint token buckets; there is no OAuth user-token flow to unlock higher rate limits, only the seller-account tier set by Walmart.',
+    inputSchema: {},
+  },
 ];

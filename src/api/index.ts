@@ -52,4 +52,13 @@ export class WalmartSellerApi {
   async initialize(): Promise<void> {
     await this.client.initialize();
   }
+  /** Snapshot the rate limiter state for the walmart_get_rate_budget tool. */
+  getRateLimiterStatus() {
+    return this.client.getRateLimiter().getStatus();
+  }
+
+  /** Expose the marketplace client for the walmart_call_endpoint discovery tool. */
+  getMarketplaceClient() {
+    return this.client;
+  }
 }
