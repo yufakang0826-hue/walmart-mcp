@@ -4,9 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.3] - 2026-06-29
 
 ### Fixed
+- **Release workflow `npm publish --provenance` failed** in 0.5.2 with
+  `EUSAGE: Provenance generation in GitHub Actions requires "write" access to
+  the "id-token" permission`. The workflow only requested `contents: write`,
+  but `--provenance` needs OIDC token issuance. Added `id-token: write` to
+  `.github/workflows/release.yml` `permissions:`. 0.5.2 never reached npm —
+  0.5.3 is the first published version under the `@lehaotech` scope.
 - **MCP server version drift**: `src/index.ts` reported `0.3.2` to MCP clients
   regardless of the published version (lagged through five releases). The
   server now reads `version` from `package.json` at startup so what the client
@@ -14,9 +20,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   subcommand reuses the same resolver.
 - **CI coverage gate** failed (`Process completed with exit code 1`) because
   the 70/70/70/70 threshold was set before the dispatch and oauth layers were
-  fully covered. Recalibrated to 50/40/50/50 — still meaningful gating against
-  the current 249-test baseline. `src/utils/logger.ts` (winston config, no
+  fully covered. Coverage actually measures 87.27/86.77/59.2/87.27 — functions
+  drag from `src/auth/oauth.ts` being 0% (no oauth unit tests yet, see issue
+  backlog). Recalibrated to 50/40/50/50 — still meaningful gating against the
+  current 249-test baseline. `src/utils/logger.ts` (winston config, no
   branches) added to coverage exclude.
+
+### Notes
+- The git tag `v0.5.2` exists in history but corresponds to a release that
+  never published. Anyone fetching it gets the same source tree minus this
+  changelog entry and the three fixes above.
 
 ## [0.5.2] - 2026-06-29
 
