@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.6] - 2026-06-29
+
+### Fixed
+- **`walmart-mcp setup` wrote a broken path into MCP client configs when
+  invoked from a global npm install.** The wizard used
+  `path.join(process.cwd(), 'build', 'index.js')`, so running it from any
+  directory other than a git clone (typical for end users — they `npm
+  install -g` then run `walmart-mcp setup` from their home dir) produced
+  e.g. `C:\Users\Fakang\build\index.js`, which doesn't exist. Claude Desktop
+  would silently fail to start the server. The wizard now anchors path
+  resolution on `import.meta.url`, locating `build/index.js` next to the
+  setup script regardless of where setup was launched, and falls back to
+  the `walmart-mcp` PATH shim if it can't find one. Both global-install and
+  git-clone modes now write a working entry. `WalmartMcpEntry.command` type
+  widened from `'node'` to `'node' | 'walmart-mcp'` to match.
+
 ## [0.5.5] - 2026-06-29
 
 ### Changed

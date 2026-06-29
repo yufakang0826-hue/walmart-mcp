@@ -116,7 +116,13 @@ export function detectInstalled(): ReadonlyArray<ClientSpec & { path: string }> 
 
 export interface WalmartMcpEntry {
   type: 'stdio';
-  command: 'node';
+  /**
+   * Either `'node'` (with `args: [absolute path to build/index.js]`) when the
+   * package's `build/` is found next to the setup script — works for both
+   * `npm install -g` and `git clone` modes — or `'walmart-mcp'` (with empty
+   * args) when falling back to the PATH shim.
+   */
+  command: 'node' | 'walmart-mcp';
   args: string[];
   env: Record<string, string>;
 }

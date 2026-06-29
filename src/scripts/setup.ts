@@ -16,7 +16,8 @@
  */
 
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as readline from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { getBaseUrl, type WalmartEnvironment } from '../config/environment.js';
@@ -220,11 +221,32 @@ async function main(): Promise<void> {
   }
 
   logStep('5/5 Register MCP server in your AI clients');
-  const buildPath = join(process.cwd(), 'build', 'index.js');
-  if (!existsSync(buildPath)) {
-    console.log(c.yellow(`   WARN: ${buildPath} does not exist yet. Run 'npm run build' first.`));
-    console.log(c.yellow('         Continuing anyway — config will point to that path once you build.'));
+  // Resolve a build/index.js that actually exists, regardless of how setup
+  // is being invoked:
+  //   - `walmart-mcp setup` from a global npm install
+  //     -> setup.js lives in <prefix>/node_modules/@lehaotech/walmart-mcp/build/scripts/
+  //   - `npm run setup` in a git clone (tsx src/scripts/setup.ts)
+  //     -> setup.ts lives in <repo>/src/scripts/, build sibling to src/
+  // Use import.meta.url to anchor — independent of process.cwd().
+  function resolveServerEntry(): { command: string; args: string[]; warn?: string } {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const candidates = [
+      resolve(here, '..', 'index.js'),                  // build/scripts/setup.js -> build/index.js
+      resolve(here, '..', '..', 'build', 'index.js'),   // src/scripts/setup.ts -> <root>/build/index.js
+    ];
+    const found = candidates.find(existsSync);
+    if (found) return { command: 'node', args: [found] };
+    // Last resort: trust the PATH shim. walmart-mcp will be on PATH after
+    // `npm install -g`. Best for users who installed globally and never
+    // looked at where the package landed.
+    return {
+      command: 'walmart-mcp',
+      args: [],
+      warn: `build/index.js not found next to ${here}. Falling back to PATH-based "walmart-mcp" command. If your AI client cannot find that, run 'npm run build' (from a git clone) or 'npm install -g @lehaotech/walmart-mcp'.`,
+    };
   }
+  const entry = resolveServerEntry();
+  if (entry.warn) console.log(c.yellow(`   WARN: ${entry.warn}`));
 
   // Detect installed clients.
   const installed: Array<ClientSpec & { path: string }> = [];
@@ -262,8 +284,8 @@ async function main(): Promise<void> {
 
   const walmartEntry: WalmartMcpEntry = {
     type: 'stdio',
-    command: 'node',
-    args: [buildPath],
+    command: entry.command,
+    args: entry.args,
     env: {
       WALMART_CLIENT_ID: clientId,
       WALMART_CLIENT_SECRET: clientSecret,
