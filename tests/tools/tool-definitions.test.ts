@@ -4,8 +4,8 @@ import { getToolDefinitions } from '../../src/tools/index.js';
 describe('Tool Definitions', () => {
   const tools = getToolDefinitions();
 
-  it('should register exactly 127 tools', () => {
-    expect(tools.length).toBe(127);
+  it('should register exactly 130 tools', () => {
+    expect(tools.length).toBe(130);
   });
 
   it('should have unique tool names', () => {

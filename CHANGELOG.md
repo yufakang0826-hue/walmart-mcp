@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-06-29
+
+### Fixed
+- **`tests/tools/tool-definitions.test.ts`** hard-coded tool count was still
+  `127`; updated to `130` to account for the three new discovery/budget tools
+  added in 0.5.0 (`walmart_call_endpoint`, `walmart_search_endpoints`,
+  `walmart_get_rate_budget`). Without this fix the v0.5.0 push fails CI.
+- **`tests/api/client-interceptor.test.ts`** retries-5xx-up-to-3-times test
+  triggered an "unhandled promise rejection" warning under Vitest because the
+  rejected promise was observed only after a series of `vi.advanceTimersByTimeAsync`
+  calls. Added an inline `.catch(() => {})` to tag the promise as handled.
+  No functional change.
+
+### Notes
+- Test suite: 249 passing, 0 failed, 0 unhandled rejections.
+
 ## [0.5.0] - 2026-06-29
 
 ### Added

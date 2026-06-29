@@ -239,6 +239,9 @@ describe('client interceptor — 5xx retry', () => {
     });
 
     const promise = client.get('/v3/items');
+    // Attach a no-op catch so Node sees the rejection is observed; we still
+    // assert via `await expect(...).rejects` below.
+    promise.catch(() => {});
     // Advance through 1s, 2s, 4s backoffs.
     await vi.advanceTimersByTimeAsync(1000);
     await vi.advanceTimersByTimeAsync(2000);
