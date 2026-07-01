@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.7] - 2026-06-30
+
+### Fixed
+- **v0.5.6 CI Release workflow failed at typecheck** — `resolveServerEntry()`'s
+  return type was declared `{ command: string; ... }`, but the call site
+  assigns into `WalmartMcpEntry` whose `command` is the union
+  `'node' | 'walmart-mcp'`. TypeScript refuses to widen. Narrowed the return
+  type to `WalmartMcpEntry['command']` so the two agree. 0.5.6 tag exists but
+  never published; 0.5.7 is the first version carrying the setup wizard
+  path-resolution fix.
+
+### Security
+- **Setup wizard masked-input leaked pasted secrets on Windows PowerShell**.
+  The raw-mode + per-char echo approach works on Unix TTYs, but on PowerShell
+  the terminal echoes the entire pasted string before Node.js can toggle
+  `stdin.setRawMode(true)`. A user reported this after their production
+  `WALMART_CLIENT_SECRET` was echoed in full into the terminal (and thence
+  into a chat log). `askMasked` now refuses to accept secrets via terminal on
+  `process.platform === 'win32'` or any non-TTY stdin, and instructs the user
+  to put the secret in a `.env` file where it never touches the terminal.
+
+### Verified
+- End-to-end tested `@lehaotech/walmart-mcp@0.5.5` from Claude Desktop against
+  a real Walmart production account (seller YOUZITECH):
+  `walmart_get_token` returned a valid 15-minute Bearer,
+  `walmart_get_partner_info` returned the seller record,
+  `walmart_get_item_count` returned 635 PUBLISHED items. Full chain works:
+  Claude Desktop → walmart-mcp (stdio) → OAuth token exchange → Walmart
+  Marketplace API → zod-parsed response.
+
 ## [0.5.6] - 2026-06-29
 
 ### Fixed

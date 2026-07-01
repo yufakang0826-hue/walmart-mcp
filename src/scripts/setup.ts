@@ -56,7 +56,36 @@ function logStep(label: string): void {
 }
 
 // ---------- Masked input ----------
+/**
+ * Whether we can safely mask keyboard input. The raw-mode + per-char echo
+ * approach works reliably on Unix TTYs but LEAKS on Windows PowerShell:
+ * pasted characters get echoed by the terminal's line-editing layer before
+ * Node.js can toggle raw mode for that batch. A real user reported this in
+ * v0.5.5 — their production Walmart client_secret was echoed in full into
+ * the terminal (and then into a chat log). We now refuse to attempt masked
+ * input on Windows and any non-TTY stdin, and route the user to a `.env`
+ * file where the secret never touches the terminal.
+ */
+function canReliablyMaskInput(): boolean {
+  return process.platform !== 'win32' && stdin.isTTY === true;
+}
+
 async function askMasked(prompt: string): Promise<string> {
+  if (!canReliablyMaskInput()) {
+    // Guardrail: don't accept the secret via terminal at all on Windows.
+    // Print the prompt with a red warning and take a plain-text line so we
+    // don't leave the user hanging, but strongly discourage this path.
+    process.stdout.write(prompt);
+    console.log('');
+    console.log(c.red('   ⚠  Masked terminal input is unreliable on this platform'));
+    console.log(c.red('      (Windows PowerShell echoes pasted secrets before Node.js can hide them).'));
+    console.log(c.yellow('      RECOMMENDED: Ctrl+C now, put the secret in a `.env` file next to the'));
+    console.log(c.yellow('                   package (WALMART_CLIENT_SECRET=...), then re-run `walmart-mcp setup`.'));
+    console.log(c.dim('      Or press Enter with an empty value to abort this step.'));
+    const value = (await rl.question('   Value (will be echoed): ')).trim();
+    return value;
+  }
+
   process.stdout.write(prompt);
   let value = '';
   await new Promise<void>((resolve) => {
@@ -228,7 +257,11 @@ async function main(): Promise<void> {
   //   - `npm run setup` in a git clone (tsx src/scripts/setup.ts)
   //     -> setup.ts lives in <repo>/src/scripts/, build sibling to src/
   // Use import.meta.url to anchor — independent of process.cwd().
-  function resolveServerEntry(): { command: string; args: string[]; warn?: string } {
+  function resolveServerEntry(): {
+    command: WalmartMcpEntry['command'];
+    args: string[];
+    warn?: string;
+  } {
     const here = dirname(fileURLToPath(import.meta.url));
     const candidates = [
       resolve(here, '..', 'index.js'),                  // build/scripts/setup.js -> build/index.js
