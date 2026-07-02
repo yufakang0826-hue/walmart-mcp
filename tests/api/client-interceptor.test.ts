@@ -219,6 +219,39 @@ describe('client interceptor — 429 rate limit', () => {
     await expect(client.get('/v3/items')).rejects.toThrow(/Rate limit/);
     await expect(client.get('/v3/items')).rejects.toThrow(/45/);
   });
+
+  it('auto-waits and retries once when retry-after is short (<=30s)', async () => {
+    vi.useFakeTimers();
+    try {
+      const client = makeClient();
+      let calls = 0;
+      setAdapter(client, async (config) => {
+        calls++;
+        if (calls === 1) {
+          return Promise.reject({
+            isAxiosError: true,
+            config,
+            response: {
+              status: 429,
+              statusText: 'Too Many Requests',
+              data: {},
+              headers: { 'retry-after': '2' },
+            },
+          });
+        }
+        return { status: 200, statusText: 'OK', data: { ok: true }, headers: {}, config };
+      });
+
+      const promise = client.get('/v3/items');
+      await vi.advanceTimersByTimeAsync(2_000);
+      const result = await promise;
+
+      expect(calls).toBe(2);
+      expect(result).toEqual({ ok: true });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 // =====================================================================

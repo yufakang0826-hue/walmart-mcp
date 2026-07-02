@@ -33,7 +33,7 @@ export class WalmartSellerApi {
     this.client = new WalmartApiClient(config);
     this.auth = this.client.getAuthClient();
 
-    this.items = new ItemsApi(this.client);
+    this.items = new ItemsApi(this.client, config.market);
     this.inventory = new InventoryApi(this.client);
     this.orders = new OrdersApi(this.client);
     this.pricing = new PricingApi(this.client);

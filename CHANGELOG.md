@@ -4,6 +4,63 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.8] - 2026-07-02
+
+### Fixed
+- **`walmart_submit_item_update_feed` could never succeed** (P0). The zod
+  envelope forced the legacy `MPItem[].Item` wrapper and defaulted
+  `version: "5.0"` + `sellingChannel`, all of which current Walmart spec 5.0
+  rejects. Reverse-engineered the working contract against production
+  (19 live feed submissions, seller YOUZITECH, 2026-07-02):
+  - Header may ONLY contain `{ businessUnit, locale, version }`.
+    `subset`/`requestId`/`mart`/`feedDate` fail item validation ("not a valid
+    field"); `sellingChannel`/`processMode` flip Walmart's parser into a
+    legacy path that NPEs (`ERR_INT_DATA_01010092` / PGW, itemsReceived=0)
+    when `subset` is absent.
+  - `version` must be the FULL dated spec string; bare `"5.0"` dies with
+    `ERR_INT_SYS_0801003` / `WM_SPEC_MODE` mislabeled as a transient glitch.
+  - Items use `{ Orderable: { sku, productIdentifiers }, Visible:
+    { "<Product Type>": { productName, shortDescription, keyFeatures, ... } } }`
+    — `productName` lives under Visible, and the `Item` wrapper is rejected.
+  New schema + a runtime `normalizeMaintenanceFeed()` sanitizer enforce all of
+  this; defaults are filled from config so callers can pass just `MPItem`.
+  Verified: feed 18BE535D81BE56A4AC777455D14D08D7@AX8BBgA accepted with zero
+  ingestion errors.
+- **`walmart_call_endpoint` silently dropped `params` for POST/PUT/PATCH** —
+  e.g. `POST /v3/feeds` + `params: { feedType }` 404ed ("No static resource").
+  Query params are now folded into the URL for body-carrying methods.
+- **`walmart_poll_feed_until_complete` died at ~60s with MCP `-32001`** even
+  when `maxWaitSeconds` allowed 2h, because MCP clients abort long tool calls.
+  Per-call budget is now clamped to 50s and budget exhaustion RETURNS the
+  latest status with `pollTimedOut: true` + a hint instead of throwing.
+  Polling intervals tightened (3s initial, then 5/10/15/20/30s) so fast feeds
+  resolve in one call.
+- **`walmart_get_item_spec` always 404ed** — it sent `productType` (singular)
+  and omitted `feedType`; Walmart's Get Spec wants `productTypes`, `feedType`,
+  and a FULL dated `version`. All three are now sent, with the version
+  defaulted from config.
+
+### Added
+- `DEFAULT_ITEM_SPEC_VERSION` (currently `5.0.20260501-19_21_29-api`, per the
+  2026-05 developer-portal release) with `WALMART_ITEM_SPEC_VERSION` env
+  override, plus `getBusinessUnit()` market→businessUnit mapping.
+- Feed-status responses now carry an `ingestionHint` when Walmart returns
+  `WM_SPEC_MODE` or the PGW NullPointerException, translating both cryptic
+  errors into the actual fix (full version string / forbidden header fields).
+- **429 auto-retry**: when Walmart's `retry-after` is ≤30s, the client now
+  waits it out and retries once instead of throwing — eliminates the
+  wait-and-manually-resubmit loop for burst throttling. Longer waits still
+  throw, now including `x-next-replenish-time` in the message. The 423
+  locked-resource retry delay dropped 60s → 20s so the retry can actually
+  fire before MCP clients abort the call.
+
+### Security
+- `axios` floor raised to ^1.18.1 — 1.13.x carried multiple HIGH advisories
+  (NO_PROXY SSRF bypass, prototype-pollution gadgets, CRLF injection in
+  multipart bodies). Run `npm audit fix` after pulling to refresh the
+  lockfile (also clears transitive `@hono/node-server` / `fast-uri` /
+  `form-data` advisories).
+
 ## [0.5.7] - 2026-06-30
 
 ### Fixed

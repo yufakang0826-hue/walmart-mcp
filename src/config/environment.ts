@@ -36,6 +36,31 @@ export function getBaseUrl(env: WalmartEnvironment): string {
   return BASE_URLS[env];
 }
 
+/**
+ * Current Walmart Item Spec 5.0 version string.
+ *
+ * Walmart requires the FULL dated version (e.g. "5.0.20260501-19_21_29-api")
+ * in MPItemFeedHeader.version and in GET /v3/items/spec. The short form "5.0"
+ * fails spec-mode resolution with ERR_INT_SYS_0801003 / WM_SPEC_MODE
+ * ("It looks like there was a glitch on our end") and the feed dies with
+ * itemsReceived=0.
+ *
+ * Walmart announces new spec versions on the developer portal "What's new"
+ * page. Override with WALMART_ITEM_SPEC_VERSION when a newer one ships.
+ * Verified working against production on 2026-07-02 (also: 5.0.20260114-19_40_57-api).
+ */
+export const DEFAULT_ITEM_SPEC_VERSION = '5.0.20260501-19_21_29-api';
+
+export function getItemSpecVersion(): string {
+  return process.env.WALMART_ITEM_SPEC_VERSION || DEFAULT_ITEM_SPEC_VERSION;
+}
+
+/** Map the configured market to the businessUnit value Walmart expects in item feeds. */
+export function getBusinessUnit(market: WalmartMarket = 'us'): string {
+  const map: Record<string, string> = { us: 'WALMART_US', CA: 'WALMART_CA', mx: 'WALMART_MX' };
+  return map[market] ?? 'WALMART_US';
+}
+
 export function getAdBaseUrl(env: WalmartEnvironment): string {
   return AD_BASE_URLS[env];
 }

@@ -34,10 +34,20 @@ export const feedTools = [
   },
   {
     name: 'walmart_poll_feed_until_complete',
-    description: 'Poll a feed status until it completes (PROCESSED or ERROR) or times out. Uses progressive polling intervals: 15s, 30s, 1m, 2m, then every 4m. Max wait: 2 hours.',
+    description:
+      'Poll a feed status until it completes (PROCESSED or ERROR) or the ~45s per-call budget ' +
+      'runs out. If the feed is still processing, it RETURNS the latest status with ' +
+      'pollTimedOut: true instead of erroring — call it again with the same feedId to keep ' +
+      'waiting. Item/content feeds routinely take minutes to hours to process.',
     inputSchema: {
       feedId: z.string().describe('Feed ID to poll'),
-      maxWaitSeconds: z.number().int().min(30).max(7200).optional().describe('Max wait time in seconds (default 7200 = 2 hours)'),
+      maxWaitSeconds: z
+        .number()
+        .int()
+        .min(5)
+        .max(7200)
+        .optional()
+        .describe('Per-call wait budget in seconds (default 45, clamped to 50 to stay under MCP client timeouts)'),
     },
   },
 ];

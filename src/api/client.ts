@@ -112,21 +112,36 @@ export class WalmartApiClient {
           return this.http.request(config);
         }
 
-        // 429: Rate limit exceeded
+        // 429: Rate limit exceeded. If Walmart's retry-after is short enough
+        // to fit inside a typical MCP tool-call budget (~60s), wait it out
+        // and retry once instead of surfacing an error the caller can only
+        // respond to by... waiting and retrying. Longer waits still throw.
         if (status === 429) {
-          const retryAfter = error.response.headers['retry-after'] || '60';
-          apiLogger.warn(`429 Rate limit - retry after ${retryAfter}s`);
+          const retryAfterSec = parseInt(error.response.headers['retry-after'] || '60', 10) || 60;
+          const shortEnough = retryAfterSec <= 30;
+          if (shortEnough && !(config as { __rateRetried?: boolean }).__rateRetried) {
+            (config as { __rateRetried?: boolean }).__rateRetried = true;
+            apiLogger.warn(`429 Rate limit - auto-waiting ${retryAfterSec}s then retrying once`);
+            await new Promise((r) => setTimeout(r, retryAfterSec * 1000));
+            return this.http.request(config);
+          }
+          apiLogger.warn(`429 Rate limit - retry after ${retryAfterSec}s`);
           throw new Error(
-            `Rate limit exceeded. Retry after ${retryAfter} seconds. ` +
-            `Remaining tokens: ${error.response.headers['x-current-token-count'] || 'unknown'}`,
+            `Rate limit exceeded. Retry after ${retryAfterSec} seconds. ` +
+            `Remaining tokens: ${error.response.headers['x-current-token-count'] || 'unknown'}` +
+            (error.response.headers['x-next-replenish-time']
+              ? `. Bucket replenishes at ${error.response.headers['x-next-replenish-time']}`
+              : ''),
           );
         }
 
-        // 423: Resource locked - retry once after 60s
+        // 423: Resource locked - retry once after 20s. (Was 60s, but a 60s
+        // in-band sleep guarantees the surrounding MCP tool call gets killed
+        // by the client's ~60s timeout before the retry even fires.)
         if (status === 423 && !config.__lockRetried) {
           config.__lockRetried = true;
-          apiLogger.warn('423 Resource locked - retrying in 60s');
-          await new Promise((r) => setTimeout(r, 60_000));
+          apiLogger.warn('423 Resource locked - retrying in 20s');
+          await new Promise((r) => setTimeout(r, 20_000));
           return this.http.request(config);
         }
 

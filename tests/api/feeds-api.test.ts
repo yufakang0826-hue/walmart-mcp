@@ -86,20 +86,20 @@ describe('FeedsApi', () => {
       expect(client.get).toHaveBeenCalledTimes(3);
     });
 
-    it('should throw on timeout', async () => {
+    it('should return partial status with pollTimedOut on budget exhaustion', async () => {
       client.get.mockResolvedValue({ feedStatus: 'INPROGRESS' });
 
-      let error: Error | null = null;
-      const promise = api.pollFeedUntilComplete('F1', 10_000).catch((e: Error) => {
-        error = e;
-      });
-
-      // Advance 15s (initial delay) — by then Date.now() - startTime > maxWaitMs
+      const promise = api.pollFeedUntilComplete('F1', 10_000);
       await vi.advanceTimersByTimeAsync(15_000);
-      await promise;
+      const result = await promise as {
+        pollTimedOut?: boolean; feedStatus?: string; hint?: string;
+      };
 
-      expect(error).not.toBeNull();
-      expect(error!.message).toMatch(/did not complete/i);
+      // Budget exhaustion RETURNS the latest status instead of throwing, so
+      // MCP callers can re-invoke the tool to keep waiting.
+      expect(result.pollTimedOut).toBe(true);
+      expect(result.feedStatus).toBe('INPROGRESS');
+      expect(result.hint).toMatch(/still processing/i);
     });
   });
 });

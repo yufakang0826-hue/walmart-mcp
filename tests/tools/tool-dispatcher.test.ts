@@ -215,13 +215,15 @@ describe('Tool Dispatcher', () => {
   });
 
   describe('Feeds', () => {
-    it('walmart_poll_feed_until_complete should convert seconds to ms', async () => {
+    it('walmart_poll_feed_until_complete should convert seconds to ms and clamp to 50s', async () => {
       const api = createMockApi();
       await executeTool(api, 'walmart_poll_feed_until_complete', {
         feedId: 'F1',
         maxWaitSeconds: 120,
       });
-      expect(api.feeds.pollFeedUntilComplete).toHaveBeenCalledWith('F1', 120000);
+      // 120s requested, but the per-call budget is clamped to 50_000 ms so
+      // MCP clients (which abort tool calls at ~60s) never kill the request.
+      expect(api.feeds.pollFeedUntilComplete).toHaveBeenCalledWith('F1', 50000);
     });
   });
 

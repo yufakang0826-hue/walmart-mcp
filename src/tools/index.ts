@@ -282,9 +282,13 @@ export async function executeTool(
       return await api.feeds.submitFeed(args.feedType as string, args.feedData as object);
 
     case 'walmart_poll_feed_until_complete': {
-      const maxWaitMs = args.maxWaitSeconds
+      // MCP clients abort tool calls at ~60s, so clamp the per-invocation
+      // budget to 50s; longer waits are achieved by calling the tool again
+      // (it returns pollTimedOut: true + latest status instead of throwing).
+      const requestedMs = args.maxWaitSeconds
         ? (args.maxWaitSeconds as number) * 1000
         : undefined;
+      const maxWaitMs = Math.min(requestedMs ?? 45_000, 50_000);
       return await api.feeds.pollFeedUntilComplete(args.feedId as string, maxWaitMs);
     }
 
@@ -583,12 +587,23 @@ export async function executeTool(
       const params = args.params as Record<string, string | number | boolean> | undefined;
       const body = args.body as Record<string, unknown> | undefined;
       const client = api.getMarketplaceClient();
+      // client.post/put take no axios config for params, so fold query params
+      // into the path for body-carrying methods. (Previously params were
+      // silently dropped for POST/PUT/PATCH — e.g. POST /v3/feeds?feedType=X
+      // 404ed unless the caller embedded the query in `path` manually.)
+      const withQuery = (): string => {
+        if (!params || Object.keys(params).length === 0) return path;
+        const qs = new URLSearchParams(
+          Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)])),
+        ).toString();
+        return `${path}${path.includes('?') ? '&' : '?'}${qs}`;
+      };
       switch (method) {
         case 'GET':    return await client.get(path, params);
         case 'DELETE': return await client.delete(path, params);
-        case 'POST':   return await client.post(path, body);
-        case 'PUT':    return await client.put(path, body);
-        case 'PATCH':  return await client.post(path, body);
+        case 'POST':   return await client.post(withQuery(), body);
+        case 'PUT':    return await client.put(withQuery(), body);
+        case 'PATCH':  return await client.post(withQuery(), body);
         default:
           throw new Error(`Unsupported HTTP method: ${method}`);
       }

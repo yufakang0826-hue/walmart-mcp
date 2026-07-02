@@ -37,20 +37,70 @@ const MpItemEnvelopeSchema = z
   .strict();
 
 // ---------- MP_MAINTENANCE feed envelope ----------
-const MpMaintenanceEnvelopeSchema = z
+// Spec 5.0 partial-update format, reverse-engineered against production and
+// confirmed by the official docs (2026-07):
+//
+//   MPItemFeedHeader: ONLY { businessUnit, locale, version } are allowed.
+//     - `subset`, `requestId`, `mart`, `feedDate` → per-item DATA_ERROR
+//       ("X is not a valid field", fatal).
+//     - `sellingChannel` / `processMode` → accepted by the validator BUT they
+//       flip Walmart's parser into a legacy path that dereferences `subset`
+//       and crashes with ERR_INT_DATA_01010092 (PGW NullPointerException,
+//       itemsReceived=0) when it is absent. Never send them.
+//     - `version` must be the FULL dated spec string; "5.0" fails with
+//       WM_SPEC_MODE (see DEFAULT_ITEM_SPEC_VERSION).
+//   MPItem[]: { Orderable: { sku, productIdentifiers }, Visible: { "<Product
+//     Type>": { productName, shortDescription, keyFeatures, ... } } }.
+//     The legacy `Item` wrapper is rejected by Walmart ("'Item' is not a
+//     valid field") — productName lives under Visible, NOT Orderable.
+//
+// Header uses zod strip mode (plain .object) so dangerous extra fields are
+// silently dropped locally instead of poisoning the feed.
+const MaintenanceHeaderSchema = z.object({
+  businessUnit: z.string().optional().describe('e.g. WALMART_US; defaults from configured market'),
+  locale: z.string().default('en'),
+  version: z
+    .string()
+    .optional()
+    .describe('Full dated spec version, e.g. 5.0.20260501-19_21_29-api; defaults to the current known version'),
+});
+
+const MaintenanceItemSchema = z
   .object({
-    MPItemFeedHeader: z
+    Orderable: z
       .object({
-        version: z.string().default('5.0'),
-        sellingChannel: z.literal('marketplace').default('marketplace'),
-        locale: z.string().default('en'),
-        requestId: z.string().optional(),
+        sku: SkuSchema,
+        productIdentifiers: z
+          .object({
+            productIdType: z.enum(['GTIN', 'UPC', 'ISBN', 'EAN']).optional(),
+            productId: z.string().min(1).optional(),
+          })
+          .passthrough()
+          .optional(),
       })
       .passthrough(),
-    MPItem: z
-      .array(z.object({ Item: z.object({ sku: SkuSchema }).passthrough() }).passthrough())
-      .min(1)
-      .max(10_000),
+    Visible: z
+      .record(z.string(), z.record(z.string(), z.unknown()))
+      .optional()
+      .describe('Keyed by Product Type, e.g. { "Camera Bags & Cases": { productName, shortDescription, keyFeatures } }'),
+  })
+  .passthrough()
+  .superRefine((val, ctx) => {
+    if ('Item' in val) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'Spec 5.0 does not use an `Item` wrapper. Put sku + productIdentifiers in `Orderable` ' +
+          'and content fields (productName, shortDescription, keyFeatures, ...) in ' +
+          '`Visible["<Product Type>"]`. Get the product type from walmart_get_item.',
+      });
+    }
+  });
+
+const MpMaintenanceEnvelopeSchema = z
+  .object({
+    MPItemFeedHeader: MaintenanceHeaderSchema.default({}),
+    MPItem: z.array(MaintenanceItemSchema).min(1).max(10_000),
   })
   .strict();
 
@@ -190,10 +240,21 @@ export const itemTools = [
   },
   {
     name: 'walmart_get_item_spec',
-    description: 'Get the item specification (required and optional attributes) for a product type. Use this before creating items to know which fields are needed.',
+    description:
+      'Get the item specification (required and optional attributes) for a product type. Use this ' +
+      'before creating or updating items to know which fields are needed. Walmart requires the ' +
+      'FULL dated spec version (defaulted automatically) and throttles this endpoint at ~3 ' +
+      'requests/minute.',
     inputSchema: {
-      productType: z.string().describe('Product type name from taxonomy (e.g., "Electronics", "Clothing")'),
-      version: z.string().optional().describe('Spec version (optional)'),
+      productType: z.string().describe('Product type name from taxonomy (e.g., "Camera Bags & Cases")'),
+      feedType: z
+        .enum(['MP_ITEM', 'MP_MAINTENANCE', 'MP_WFS_ITEM', 'OMNI_WFS'])
+        .optional()
+        .describe('Item setup data model (default MP_ITEM)'),
+      version: z
+        .string()
+        .optional()
+        .describe('Full dated spec version, e.g. 5.0.20260501-19_21_29-api (defaults to current known version)'),
     },
   },
   {
@@ -209,8 +270,16 @@ export const itemTools = [
   {
     name: 'walmart_submit_item_update_feed',
     description:
-      'Submit a bulk item update / maintenance feed (feedType=MP_MAINTENANCE). Same envelope as ' +
-      'item creation but for updating existing SKUs. Returns a feedId.',
+      'Submit a bulk item update / maintenance feed (feedType=MP_MAINTENANCE, spec 5.0 partial ' +
+      'update) to change listing content (title, description, key features, attributes) of ' +
+      'existing SKUs. Envelope: { MPItemFeedHeader: { businessUnit, locale, version }, MPItem: ' +
+      '[{ Orderable: { sku, productIdentifiers }, Visible: { "<Product Type>": { productName, ' +
+      'shortDescription, keyFeatures, ... } } }] }. Header/version defaults are filled in ' +
+      'automatically — usually just pass MPItem. productName goes in Visible (NOT Orderable); ' +
+      'get the Product Type string from walmart_get_item. Price/inventory have their own tools. ' +
+      'Returns a feedId. Example item: { Orderable: { sku: "ABC-1", productIdentifiers: { ' +
+      'productIdType: "UPC", productId: "123456789012" } }, Visible: { "Camera Bags & Cases": { ' +
+      'productName: "New Title", shortDescription: "...", keyFeatures: ["...", "..."] } } }',
     inputSchema: {
       feedData: MpMaintenanceEnvelopeSchema,
     },
