@@ -23,7 +23,7 @@ export const ENDPOINT_CATALOG: ReadonlyArray<EndpointEntry> = [
   { tags: ['item', 'single', 'sku'], signature: 'GET /v3/items/{sku}', wrappedTool: 'walmart_get_item', description: 'Get single item by SKU.' },
   { tags: ['item', 'retire', 'delist'], signature: 'DELETE /v3/items/{sku}', wrappedTool: 'walmart_retire_item', description: 'Retire (unpublish) an item.' },
   { tags: ['taxonomy', 'category'], signature: 'GET /v3/items/taxonomy', wrappedTool: 'walmart_get_taxonomy', description: 'Get Walmart category taxonomy.' },
-  { tags: ['spec', 'attribute'], signature: 'GET /v3/items/spec', wrappedTool: 'walmart_get_item_spec', description: 'Get required attributes for a product type.' },
+  { tags: ['spec', 'attribute'], signature: 'POST /v3/items/spec', wrappedTool: 'walmart_get_item_spec', description: 'Get required attributes for a product type (JSON body: feedType, version, productTypes[]).' },
   { tags: ['hazmat', 'onhold'], signature: 'POST /v3/items/onhold/search', wrappedTool: 'walmart_get_hazmat_items', description: 'Search items on hold for hazmat review.' },
 
   // ---------- Inventory ----------

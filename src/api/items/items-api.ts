@@ -1,6 +1,74 @@
+import { appendFile, mkdir } from 'fs/promises';
+import { homedir } from 'os';
+import { join } from 'path';
 import { WalmartApiClient } from '../client.js';
-import { getBusinessUnit, getItemSpecVersion } from '../../config/environment.js';
+import { getBusinessUnit, getSpecVersionCandidates } from '../../config/environment.js';
 import type { WalmartMarket } from '../../config/environment.js';
+
+/**
+ * Append-only local ledger of every content feed this MCP submits.
+ * Rationale: Walmart offers NO API to read a listing's current
+ * description/key features, so an overwrite is otherwise unrecoverable.
+ * The ledger preserves exactly what we sent and when, per feed.
+ * Location: $WALMART_FEED_LEDGER_DIR or ~/.walmart-mcp/feed-ledger.jsonl.
+ * Failures are swallowed — the ledger must never break a submission.
+ */
+async function appendFeedLedger(entry: Record<string, unknown>): Promise<void> {
+  try {
+    const dir = process.env.WALMART_FEED_LEDGER_DIR || join(homedir(), '.walmart-mcp');
+    await mkdir(dir, { recursive: true });
+    await appendFile(
+      join(dir, 'feed-ledger.jsonl'),
+      `${JSON.stringify({ ts: new Date().toISOString(), ...entry })}\n`,
+      'utf-8',
+    );
+  } catch {
+    /* never block a feed on ledger I/O */
+  }
+}
+
+/**
+ * Reduce a full Walmart item spec (a ~100KB+ JSON Schema) to just what a
+ * caller needs to build a valid feed: required attribute names per section
+ * plus type/enum/title detail for each required attribute.
+ */
+function summarizeSpecSchema(spec: unknown): unknown {
+  const schema = (spec as { schema?: Record<string, any> })?.schema;
+  if (!schema?.properties) return spec; // unexpected shape — return as-is
+
+  const detail = (node: Record<string, any> | undefined, name: string) => {
+    const p = node?.properties?.[name] ?? {};
+    const out: Record<string, unknown> = { type: p.type };
+    if (p.title && p.title !== name) out.title = p.title;
+    if (p.enum) out.enum = p.enum.length > 25 ? [...p.enum.slice(0, 25), `... ${p.enum.length - 25} more`] : p.enum;
+    if (p.items?.enum) out.itemEnum = p.items.enum.slice(0, 25);
+    if (p.maxLength) out.maxLength = p.maxLength;
+    return out;
+  };
+  const section = (node: Record<string, any> | undefined) => ({
+    required: Object.fromEntries((node?.required ?? []).map((n: string) => [n, detail(node, n)])),
+    optionalAttributes: Object.keys(node?.properties ?? {}).filter(
+      (n) => !(node?.required ?? []).includes(n),
+    ),
+  });
+
+  const header = schema.properties.MPItemFeedHeader;
+  const item = schema.properties.MPItem?.items;
+  const orderable = item?.properties?.Orderable;
+  const visible = item?.properties?.Visible;
+  const productTypes: Record<string, unknown> = {};
+  for (const [pt, node] of Object.entries(visible?.properties ?? {})) {
+    productTypes[pt] = section(node as Record<string, any>);
+  }
+
+  return {
+    summarized: true,
+    hint: 'Compact projection of the item spec. Pass requiredOnly: false for the full JSON Schema.',
+    headerRequired: header?.required ?? [],
+    orderable: section(orderable),
+    visible: productTypes,
+  };
+}
 
 /**
  * Header fields that must NEVER reach a spec-5.0 MP_MAINTENANCE feed.
@@ -20,11 +88,48 @@ const FORBIDDEN_MAINTENANCE_HEADER_FIELDS = [
 
 export class ItemsApi {
   private basePath = '/v3';
+  private resolvedSpecVersion: string | null = null;
+  private specVersionProbe: Promise<string> | null = null;
 
   constructor(
     private client: WalmartApiClient,
     private market: WalmartMarket = 'us',
   ) {}
+
+  /**
+   * Resolve the currently-valid spec 5.0 version. Probes candidates (env
+   * override first, then known-good fallbacks) against the Get Spec endpoint
+   * once per process and caches the winner. If every probe fails (offline,
+   * throttled), falls back to the first candidate so callers still proceed.
+   * This defuses the quarterly time bomb where Walmart retires a version and
+   * every item feed suddenly dies with WM_SPEC_MODE.
+   */
+  private async resolveSpecVersion(): Promise<string> {
+    if (this.resolvedSpecVersion) return this.resolvedSpecVersion;
+    if (this.specVersionProbe) return this.specVersionProbe;
+
+    const candidates = getSpecVersionCandidates();
+    this.specVersionProbe = (async () => {
+      for (const version of candidates) {
+        try {
+          await this.client.post(`${this.basePath}/items/spec`, {
+            feedType: 'MP_ITEM',
+            version,
+            productTypes: ['Drone Propellers'],
+          });
+          this.resolvedSpecVersion = version;
+          return version;
+        } catch {
+          /* try the next candidate */
+        }
+      }
+      this.resolvedSpecVersion = candidates[0]!;
+      return this.resolvedSpecVersion;
+    })().finally(() => {
+      this.specVersionProbe = null;
+    });
+    return this.specVersionProbe;
+  }
 
   async getAllItems(params?: {
     limit?: number;
@@ -68,44 +173,113 @@ export class ItemsApi {
     return await this.client.get(`${this.basePath}/items/count`, query);
   }
 
-  async getTaxonomy() {
-    return await this.client.get(`${this.basePath}/taxonomy`);
+  async getTaxonomy(params?: { feedType?: string; version?: string; category?: string }) {
+    // Current endpoint is /v3/items/taxonomy (the old /v3/taxonomy is gone —
+    // "No static resource"). With feedType+version it returns the spec-5.0
+    // product-type tree (productTypeGroup → productTypeName), which is the
+    // source of valid names for getItemSpec.
+    const query = params?.feedType || params?.version
+      ? {
+          feedType: params?.feedType ?? 'MP_ITEM',
+          version: params?.version ?? (await this.resolveSpecVersion()),
+        }
+      : undefined;
+    const raw = await this.client.get(`${this.basePath}/items/taxonomy`, query);
+
+    // The full tree is ~2MB. When a category filter is given, return only
+    // matching category nodes (case-insensitive substring match).
+    if (!params?.category) return raw;
+    const tree = (raw as { itemTaxonomy?: Array<Record<string, unknown>> })?.itemTaxonomy;
+    if (!Array.isArray(tree)) return raw;
+    const needle = params.category.toLowerCase();
+    const matched = tree.filter((node) =>
+      String(node.category ?? '').toLowerCase().includes(needle) ||
+      String(node.description ?? '').toLowerCase().includes(needle),
+    );
+    return { filtered: true, categoryFilter: params.category, matchCount: matched.length, itemTaxonomy: matched };
   }
 
-  async getItemSpec(params: { productType: string; feedType?: string; version?: string }) {
-    if (!params.productType) throw new Error('productType is required');
-    // Walmart's Get Spec endpoint expects `productTypes` (plural, up to 20 CSV),
-    // `feedType`, and the FULL dated `version` — a bare "5.0" returns 404.
-    return await this.client.get(`${this.basePath}/items/spec`, {
+  async getItemSpec(params: {
+    productType: string | string[];
+    feedType?: string;
+    version?: string;
+    requiredOnly?: boolean;
+  }) {
+    if (!params.productType || (Array.isArray(params.productType) && params.productType.length === 0)) {
+      throw new Error('productType is required');
+    }
+    // Walmart's Get Spec is POST /v3/items/spec with a JSON body — the old
+    // GET form 404s ("No Items found for the input parameters"). Verified
+    // against production 2026-07-02. Body: { feedType, version (FULL dated
+    // string), productTypes: [up to 20 names from getTaxonomy] }.
+    // Throttled at ~3 requests/minute per seller.
+    const productTypes = Array.isArray(params.productType)
+      ? params.productType
+      : [params.productType];
+    const spec = await this.client.post(`${this.basePath}/items/spec`, {
       feedType: params.feedType ?? 'MP_ITEM',
-      version: params.version ?? getItemSpecVersion(),
-      productTypes: params.productType,
+      version: params.version ?? (await this.resolveSpecVersion()),
+      productTypes,
     });
+    // Default to the compact required-attributes projection: the raw spec is
+    // ~100KB+ of JSON Schema per product type.
+    return params.requiredOnly === false ? spec : summarizeSpecSchema(spec);
   }
 
   async submitItemFeed(data: object) {
-    return await this.client.post(
-      `${this.basePath}/feeds?feedType=item`,
-      data,
+    // Dual-shape support:
+    //  - spec 5.0 items ({ Orderable, Visible }) → feedType=MP_ITEM with a
+    //    normalized { businessUnit, locale, version } header (same contract
+    //    as MP_MAINTENANCE — see normalizeSpec5Envelope).
+    //  - legacy items ({ Item: {...} }) → feedType=item, payload untouched
+    //    (this path is proven working in production; kept for back-compat).
+    const items = (data as { MPItem?: unknown[] }).MPItem;
+    const first = Array.isArray(items) ? items[0] : undefined;
+    const isSpec5 = !!first && typeof first === 'object' && 'Orderable' in (first as object);
+
+    const feedType = isSpec5 ? 'MP_ITEM' : 'item';
+    const payload = isSpec5
+      ? await this.normalizeSpec5Envelope(data, { rejectItemWrapper: true })
+      : data;
+    const result = await this.client.post(
+      `${this.basePath}/feeds?feedType=${feedType}`,
+      payload,
       { headers: { 'Content-Type': 'application/json' } },
     );
+    void appendFeedLedger({
+      feedType,
+      feedId: (result as { feedId?: string })?.feedId,
+      payload,
+    });
+    return result;
   }
 
   async submitItemUpdateFeed(data: object) {
-    return await this.client.post(
+    const payload = await this.normalizeSpec5Envelope(data, { rejectItemWrapper: true });
+    const result = await this.client.post(
       `${this.basePath}/feeds?feedType=MP_MAINTENANCE`,
-      this.normalizeMaintenanceFeed(data),
+      payload,
       { headers: { 'Content-Type': 'application/json' } },
     );
+    void appendFeedLedger({
+      feedType: 'MP_MAINTENANCE',
+      feedId: (result as { feedId?: string })?.feedId,
+      payload,
+    });
+    return result;
   }
 
   /**
-   * Enforce the spec-5.0 MP_MAINTENANCE envelope contract regardless of what
-   * the caller supplied: header reduced to { businessUnit, locale, version }
-   * with defaults filled in, forbidden fields dropped, and legacy
-   * `MPItem[].Item` wrappers rejected with an actionable error.
+   * Enforce the spec-5.0 feed envelope contract regardless of what the
+   * caller supplied: header reduced to { businessUnit, locale, version }
+   * with defaults filled in, forbidden fields dropped, and (optionally)
+   * legacy `MPItem[].Item` wrappers rejected with an actionable error.
+   * Shared by MP_MAINTENANCE and spec-5.0 MP_ITEM submissions.
    */
-  private normalizeMaintenanceFeed(data: object): object {
+  private async normalizeSpec5Envelope(
+    data: object,
+    opts: { rejectItemWrapper: boolean },
+  ): Promise<object> {
     const feed = { ...(data as Record<string, unknown>) };
     const rawHeader = { ...((feed.MPItemFeedHeader as Record<string, unknown>) ?? {}) };
 
@@ -117,15 +291,15 @@ export class ItemsApi {
       version:
         typeof rawHeader.version === 'string' && rawHeader.version.length > 3
           ? rawHeader.version
-          : getItemSpecVersion(),
+          : await this.resolveSpecVersion(),
     };
 
     const items = feed.MPItem;
-    if (Array.isArray(items)) {
+    if (opts.rejectItemWrapper && Array.isArray(items)) {
       for (const item of items) {
         if (item && typeof item === 'object' && 'Item' in (item as Record<string, unknown>)) {
           throw new Error(
-            'MP_MAINTENANCE spec 5.0 rejects the legacy `Item` wrapper. Use ' +
+            'Spec 5.0 feeds reject the legacy `Item` wrapper. Use ' +
               '{ Orderable: { sku, productIdentifiers }, Visible: { "<Product Type>": ' +
               '{ productName, shortDescription, keyFeatures, ... } } } per item.',
           );

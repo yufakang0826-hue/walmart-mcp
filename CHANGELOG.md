@@ -4,6 +4,95 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.9] - 2026-07-02
+
+### Fixed
+- **`walmart_get_item_spec` root cause found and fixed**: Walmart's Get Spec
+  is now `POST /v3/items/spec` with a JSON body
+  `{ feedType, version, productTypes: [...] }` — every GET-with-query form
+  404s ("No Items found for the input parameters"). Verified against
+  production: the POST returns the full ~144KB spec for "Drone Propellers".
+  The tool now POSTs, accepts up to 20 product types, and documents that
+  productType must be an EXACT productTypeName from the taxonomy.
+- **`walmart_get_taxonomy` called a dead endpoint** (`GET /v3/taxonomy` →
+  "No static resource"). Now calls `GET /v3/items/taxonomy` and accepts
+  optional feedType/version to return the spec-5.0 product-type tree — the
+  authoritative source of names for get_item_spec and Visible section keys.
+
+### Added
+- **`walmart_submit_item_feed` dual-shape support**: spec 5.0 items
+  (`{ Orderable, Visible }`) are submitted as feedType=MP_ITEM with the same
+  normalized `{ businessUnit, locale, version }` header as MP_MAINTENANCE;
+  legacy `{ Item: {...} }` payloads still go out as feedType=item untouched
+  (that path is production-proven). Item-creation workflow is now fully
+  spec-5.0 capable: taxonomy → spec → feed → poll.
+- **`walmart_get_all_orders` compact summary mode (default)**: orders are
+  projected to PO/customer IDs, date, ship-to, and per-line
+  sku/qty/price/status/tracking (~10x smaller than Walmart's raw ~3KB/order
+  objects). Pass `summary: false` for full payloads. Raw shape is unchanged
+  for walmart_get_order.
+- **oauth.ts test suite** (was 0% coverage): token caching, 2-minute expiry
+  margin, concurrent-refresh dedup, missing-credential and auth-failure
+  paths, initialize() cache reuse — 9 new tests.
+
+### Added (resilience & ergonomics round 2)
+- **Spec-version auto-resolution** — defuses the quarterly time bomb where
+  Walmart retires the hardcoded spec version and every item feed dies with
+  WM_SPEC_MODE. ItemsApi now probes `WALMART_ITEM_SPEC_VERSION` (if set) and
+  the known-good fallback list against Get Spec once per process, caches the
+  winner, and falls back gracefully if all probes fail. Used by item feeds,
+  get_item_spec, and taxonomy-by-spec defaults.
+- **Feed ledger** — every MP_ITEM / item / MP_MAINTENANCE submission is
+  appended to `~/.walmart-mcp/feed-ledger.jsonl` (override with
+  `WALMART_FEED_LEDGER_DIR`) with timestamp, feedType, feedId, and the exact
+  payload. Motivation: Walmart exposes NO API to read a listing's current
+  description/key features, so an unlogged overwrite is unrecoverable.
+- **`walmart_get_item_spec` compact projection (new default)** — returns
+  required attributes per section (with type/enum/maxLength detail) plus
+  optional attribute names instead of the raw ~100KB+ JSON Schema; pass
+  `requiredOnly: false` for the full schema. Bonus: Walmart's own spec
+  confirms `MPItemFeedHeader.required = [businessUnit, locale, version]` —
+  exactly the reverse-engineered 0.5.8 contract.
+- **`walmart_get_taxonomy` category filter** — `category: "cameras"` returns
+  only matching category subtrees instead of the full ~2MB tree.
+- **Thin-wrapper test coverage** — 34 new param-passthrough tests pin
+  verb/path/payload for fulfillment, inventory, returns, and notifications
+  modules (previously 36-52% stmt coverage), plus 6 tests for spec-version
+  resolution and the spec/taxonomy projections. Suite: 298 tests.
+- **Content-read gap documented** — probed and ruled out `view=FULL`,
+  catalog search, and ITEM report v4 as sources of current listing
+  description/key features. Remaining candidates (ITEM report v5,
+  ITEM_LISTING_AUDIT) blocked on report-request throttling today; commands
+  documented in docs/optimization-backlog-2026-07-02.md.
+
+### Fixed (reports)
+- **`walmart_create_report` never worked**: it POSTed parameters as a JSON
+  body, but Walmart's on-request report API takes everything as query string
+  (bodied POST → 404 "No static resource v3/reports/reportRequests", the
+  same gateway behavior as /v3/feeds). Now sends query params; verified
+  against production (ITEM v4 report generated and downloaded).
+- **`walmart_download_report` now extracts the report inline** (new default).
+  The bare downloadURL expires in ~18 minutes and is typically unreachable
+  from AI-client sandboxes; the tool now fetches the signed URL server-side,
+  unzips it (dependency-free single-entry ZIP extractor with stored+deflate
+  support), and returns { content, header, rowCount }. Pass extract: false
+  for the old URL-only behavior.
+- Note: ITEM report **v4 does not contain description/key-features columns**
+  (it is a catalog/pricing view with itemIds, URLs, brand, variants, and
+  Amazon competitor links). Do not treat it as a content-audit source.
+
+### Corrected
+- The 0.5.8-era audit finding "20 write tools have opaque object params" was
+  a false positive in the audit script (it misread zod passthrough schemas).
+  Actual count of untyped write params: 2, both intentional escape hatches
+  (walmart_submit_generic_feed.feedData, walmart_call_endpoint.params/body).
+- Operational lesson encoded into tool descriptions: never audit listing
+  content by scraping walmart.com product pages — the "About this item"
+  module renders inconsistently (the same item can return an empty or a full
+  module on different fetches), which caused three listings to be
+  "optimized" over existing rich content on 2026-07-02 (all three restored
+  from page snapshots the same day).
+
 ## [0.5.8] - 2026-07-02
 
 ### Fixed

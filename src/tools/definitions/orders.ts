@@ -225,7 +225,10 @@ export const orderTools = [
   {
     name: 'walmart_get_all_orders',
     description:
-      'Get all orders with optional filters. Returns order details including line items, shipping, and payment info.',
+      'Get all orders with optional filters. By default returns a COMPACT summary per order ' +
+      '(PO/customer order IDs, date, ship-to, per-line sku/qty/price/status/tracking) — ideal ' +
+      'for browsing. Pass summary: false for the full raw Walmart order objects (large: ~3KB ' +
+      'per order), or use walmart_get_order for one complete order.',
     inputSchema: {
       limit: z.number().int().min(1).max(200).optional().describe('Orders per page (default 100, max 200)'),
       offset: z.string().optional().describe('Pagination offset'),
@@ -239,6 +242,10 @@ export const orderTools = [
       purchaseOrderId: z.string().optional().describe('Filter by Walmart purchase order ID'),
       sku: SkuSchema.optional().describe('Filter by SKU'),
       shipNode: z.string().optional().describe('Filter by ship node'),
+      summary: z
+        .boolean()
+        .optional()
+        .describe('Compact projection (default true). Set false for full raw order objects.'),
     },
   },
   {

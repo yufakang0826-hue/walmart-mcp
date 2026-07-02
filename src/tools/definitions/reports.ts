@@ -56,8 +56,12 @@ export const reportTools = [
     description:
       'Request generation of a report. reportType is required; supported types: ITEM, BUYBOX, ' +
       'CANCELLATION, DELIVERY_DEFECT, CPA, ITEM_PERFORMANCE, RETURN_OVERRIDES, PROMO, INVENTORY, ' +
-      'SETTLEMENT, PERFORMANCE, ITEM_LISTING_AUDIT. Optional startDate/endDate (ISO 8601). ' +
-      'Per-report-type extra filters pass through. Returns a requestId; poll walmart_get_report_status.',
+      'SETTLEMENT, PERFORMANCE, ITEM_LISTING_AUDIT. Most types also require reportVersion ' +
+      '(e.g. ITEM → "v4"). Optional startDate/endDate (ISO 8601); per-type filters pass ' +
+      'through (all sent as query parameters). The ITEM report is the authoritative backend ' +
+      'source of full listing content per SKU (title, description, key features, images, ' +
+      'attributes) — use it for content audits instead of scraping product pages. Returns a ' +
+      'requestId; poll walmart_get_report_status.',
     inputSchema: {
       reportData: CreateReportBodySchema,
     },
@@ -79,10 +83,18 @@ export const reportTools = [
   },
   {
     name: 'walmart_download_report',
-    description: 'Download a completed report. Report must be in READY status.',
+    description:
+      'Download a completed report (must be READY). By default this fetches the signed URL ' +
+      'server-side, extracts the ZIP, and returns the CSV content inline ' +
+      '({ content, header, rowCount }) — the raw downloadURL expires in ~18 minutes and is ' +
+      'usually unreachable from AI sandboxes. Pass extract: false to get just the signed URL.',
     inputSchema: {
       requestId: z.string().optional().describe('Report request ID'),
       reportType: ReportTypeSchema.optional().describe('Report type to download the latest for'),
+      extract: z
+        .boolean()
+        .optional()
+        .describe('Fetch + unzip the report and return CSV inline (default true)'),
     },
   },
 

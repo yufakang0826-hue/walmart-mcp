@@ -194,6 +194,15 @@ export class WalmartApiClient {
     return response.data;
   }
 
+  /**
+   * GET raw bytes (e.g. signed report-download URLs, which are absolute and
+   * bypass baseURL). Auth headers are harmlessly included by the interceptor.
+   */
+  async getBinary(url: string): Promise<Buffer> {
+    const response = await this.http.get<ArrayBuffer>(url, { responseType: 'arraybuffer' });
+    return Buffer.from(response.data);
+  }
+
   async post<T = unknown>(endpoint: string, data?: object, config?: object): Promise<T> {
     const response = await this.http.post<T>(endpoint, data, config);
     return response.data;

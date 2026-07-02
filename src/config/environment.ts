@@ -51,8 +51,26 @@ export function getBaseUrl(env: WalmartEnvironment): string {
  */
 export const DEFAULT_ITEM_SPEC_VERSION = '5.0.20260501-19_21_29-api';
 
+/**
+ * Known-good spec versions, newest first. When Walmart retires the current
+ * one (quarterly cadence), ItemsApi.resolveSpecVersion() probes this list at
+ * runtime and falls through to the next working version instead of letting
+ * every item feed die with WM_SPEC_MODE. Both entries verified against
+ * production 2026-07-02.
+ */
+export const ITEM_SPEC_VERSION_FALLBACKS = [
+  '5.0.20260501-19_21_29-api',
+  '5.0.20260114-19_40_57-api',
+] as const;
+
 export function getItemSpecVersion(): string {
   return process.env.WALMART_ITEM_SPEC_VERSION || DEFAULT_ITEM_SPEC_VERSION;
+}
+
+/** Env override first, then known-good fallbacks (deduplicated). */
+export function getSpecVersionCandidates(): string[] {
+  const env = process.env.WALMART_ITEM_SPEC_VERSION;
+  return [...new Set(env ? [env, ...ITEM_SPEC_VERSION_FALLBACKS] : [...ITEM_SPEC_VERSION_FALLBACKS])];
 }
 
 /** Map the configured market to the businessUnit value Walmart expects in item feeds. */

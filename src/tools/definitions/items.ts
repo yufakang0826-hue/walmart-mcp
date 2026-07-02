@@ -1,36 +1,68 @@
 import { z } from 'zod';
 import { SkuSchema, GtinSchema } from './shared-schemas.js';
 
-// ---------- MP_ITEM feed envelope ----------
+// ---------- MP_ITEM feed envelope (dual-shape) ----------
+// Two item shapes are accepted:
+//  1. Spec 5.0 (RECOMMENDED): { Orderable: { sku, productIdentifiers, brand,
+//     price, ShippingWeight, ... }, Visible: { "<Product Type>": {...} } }
+//     → submitted as feedType=MP_ITEM with a normalized
+//     { businessUnit, locale, version } header (same contract as
+//     MP_MAINTENANCE — legacy header fields are stripped server-side).
+//  2. Legacy: { Item: { sku, productIdentifiers, ...attributes } }
+//     → submitted as feedType=item, payload untouched (kept because this
+//     path is proven working in production).
+const LegacyItemShape = z
+  .object({
+    Item: z
+      .object({
+        sku: SkuSchema,
+        productIdentifiers: z
+          .object({
+            productIdType: z.enum(['GTIN', 'UPC', 'ISBN', 'EAN']).optional(),
+            productId: z.string().min(1).optional(),
+          })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+const Spec5CreateItemShape = z
+  .object({
+    Orderable: z
+      .object({
+        sku: SkuSchema,
+        productIdentifiers: z
+          .object({
+            productIdType: z.enum(['GTIN', 'UPC', 'ISBN', 'EAN']).optional(),
+            productId: z.string().min(1).optional(),
+          })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough(),
+    Visible: z
+      .record(z.string(), z.record(z.string(), z.unknown()))
+      .optional()
+      .describe('Keyed by Product Type from walmart_get_taxonomy'),
+  })
+  .passthrough();
+
 const MpItemEnvelopeSchema = z
   .object({
     MPItemFeedHeader: z
       .object({
-        version: z.string().default('5.0'),
-        sellingChannel: z.literal('marketplace').default('marketplace'),
+        businessUnit: z.string().optional(),
+        version: z.string().optional(),
+        sellingChannel: z.string().optional(),
         locale: z.string().default('en'),
         requestId: z.string().optional(),
       })
-      .passthrough(),
+      .passthrough()
+      .default({}),
     MPItem: z
-      .array(
-        z
-          .object({
-            Item: z
-              .object({
-                sku: SkuSchema,
-                productIdentifiers: z
-                  .object({
-                    productIdType: z.enum(['GTIN', 'UPC', 'ISBN', 'EAN']).optional(),
-                    productId: z.string().min(1).optional(),
-                  })
-                  .passthrough()
-                  .optional(),
-              })
-              .passthrough(),
-          })
-          .passthrough(),
-      )
+      .array(z.union([Spec5CreateItemShape, LegacyItemShape]))
       .min(1, 'MP_ITEM feed needs at least 1 item')
       .max(10_000, 'Walmart caps MP_ITEM feeds at ~10000 items per submission'),
   })
@@ -235,18 +267,37 @@ export const itemTools = [
   },
   {
     name: 'walmart_get_taxonomy',
-    description: 'Get the complete Walmart product taxonomy (category hierarchy). Use this to find the correct category for item setup.',
-    inputSchema: {},
+    description:
+      'Get the Walmart product taxonomy. With feedType/version (recommended) it returns the ' +
+      'spec-5.0 tree: category → productTypeGroup → productTypeName. Those productTypeName ' +
+      'values are the EXACT strings accepted by walmart_get_item_spec and used as the Visible ' +
+      'section key in item feeds. WARNING: response is ~2MB — search/filter it rather than ' +
+      'reading it whole.',
+    inputSchema: {
+      feedType: z
+        .enum(['MP_ITEM', 'MP_MAINTENANCE', 'MP_WFS_ITEM', 'OMNI_WFS'])
+        .optional()
+        .describe('Item setup data model (default MP_ITEM when version/feedType provided)'),
+      version: z
+        .string()
+        .optional()
+        .describe('Full dated spec version (defaults to auto-resolved current version)'),
+      category: z
+        .string()
+        .optional()
+        .describe('Case-insensitive category name filter — returns only matching category subtrees instead of the full ~2MB tree'),
+    },
   },
   {
     name: 'walmart_get_item_spec',
     description:
-      'Get the item specification (required and optional attributes) for a product type. Use this ' +
-      'before creating or updating items to know which fields are needed. Walmart requires the ' +
-      'FULL dated spec version (defaulted automatically) and throttles this endpoint at ~3 ' +
-      'requests/minute.',
+      'Get the item specification for a product type. By default returns a COMPACT projection: ' +
+      'required attributes (with type/enum detail) per section plus optional attribute names — ' +
+      'pass requiredOnly: false for the full ~100KB+ JSON Schema. productType must be an EXACT ' +
+      'productTypeName from walmart_get_taxonomy (case-sensitive). Throttled at ~3 requests/minute ' +
+      '(the first call per session may consume one extra request probing the current spec version).',
     inputSchema: {
-      productType: z.string().describe('Product type name from taxonomy (e.g., "Camera Bags & Cases")'),
+      productType: z.string().describe('Exact productTypeName from walmart_get_taxonomy (e.g., "Camera Bags & Cases", "Drone Propellers")'),
       feedType: z
         .enum(['MP_ITEM', 'MP_MAINTENANCE', 'MP_WFS_ITEM', 'OMNI_WFS'])
         .optional()
@@ -254,15 +305,24 @@ export const itemTools = [
       version: z
         .string()
         .optional()
-        .describe('Full dated spec version, e.g. 5.0.20260501-19_21_29-api (defaults to current known version)'),
+        .describe('Full dated spec version, e.g. 5.0.20260501-19_21_29-api (defaults to auto-resolved current version)'),
+      requiredOnly: z
+        .boolean()
+        .optional()
+        .describe('Compact required-attributes projection (default true). Set false for the full JSON Schema.'),
     },
   },
   {
     name: 'walmart_submit_item_feed',
     description:
-      'Submit a bulk item creation feed (feedType=item). Envelope: { MPItemFeedHeader, ' +
-      'MPItem: [{ Item: { sku, productIdentifiers, ...attributes } }] }. Per-item content fields ' +
-      'vary by productType — call walmart_get_item_spec first. Returns a feedId.',
+      'Submit a bulk item creation feed. RECOMMENDED shape (spec 5.0, submitted as ' +
+      'feedType=MP_ITEM): { MPItem: [{ Orderable: { sku, productIdentifiers, brand, price, ' +
+      'ShippingWeight, ... }, Visible: { "<Product Type>": { productName, shortDescription, ' +
+      'keyFeatures, mainImageUrl, ... } } }] } — header defaults are filled automatically. ' +
+      'Legacy shape ({ MPItem: [{ Item: {...} }] }) is still accepted and goes out as ' +
+      'feedType=item. Workflow: walmart_get_taxonomy (find the exact Product Type name) → ' +
+      'walmart_get_item_spec (required attributes for that type) → submit → ' +
+      'walmart_poll_feed_until_complete. Returns a feedId.',
     inputSchema: {
       feedData: MpItemEnvelopeSchema,
     },

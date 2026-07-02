@@ -19,9 +19,11 @@ describe('ReportsApi', () => {
     api = new ReportsApi(client);
   });
 
-  it('createReport should POST /v3/reports/reportRequests', async () => {
-    await api.createReport({ reportType: 'ITEM' });
-    expect(client.post).toHaveBeenCalledWith('/v3/reports/reportRequests', { reportType: 'ITEM' });
+  it('createReport should POST with query params and empty body (bodied POST 404s)', async () => {
+    await api.createReport({ reportType: 'ITEM', reportVersion: 'v4' });
+    expect(client.post).toHaveBeenCalledWith(
+      '/v3/reports/reportRequests?reportType=ITEM&reportVersion=v4',
+    );
   });
 
   it('getReportRequests should GET with params', async () => {

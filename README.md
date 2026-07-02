@@ -317,6 +317,12 @@ maintained in `src/utils/known-issues.ts` (single source of truth).
 | Tool | Note |
 | --- | --- |
 | `walmart_get_wfs_returns` | Sends the documented `GET /v3/returns?isWFSEnabled=Y` call. For sellers **without** WFS enrollment, Walmart returns the unfiltered return set (same data as `walmart_get_all_returns`). Upstream behavior, not an MCP defect. |
+| `walmart_get_all_orders` | **Since 0.5.9 returns a compact summary by default** (~10x smaller than Walmart's raw ~3KB/order objects). Pass `summary: false` for the raw payload; `walmart_get_order` is unchanged. |
+| `walmart_download_report` | **Since 0.5.9 fetches + unzips the report server-side** and returns the CSV inline (`content`, `header`, `rowCount`). Pass `extract: false` for the old URL-only response — note the signed URL expires in ~18 minutes. |
+| `walmart_get_item_spec` | **Since 0.5.9 returns a compact required-attributes projection by default** (the raw spec is a ~100KB+ JSON Schema — pass `requiredOnly: false` for it). The first call per session may consume one extra request from the ~3/min budget to auto-probe the current spec version. |
+| `walmart_get_taxonomy` | Full tree is ~2MB. Pass `category: "cameras"` (substring match) to get only matching category subtrees. |
+| `walmart_submit_item_feed` / `walmart_submit_item_update_feed` | Spec-5.0 envelopes are normalized automatically (header reduced to `businessUnit`/`locale`/`version`, current version auto-resolved with fallbacks). Every submission is appended to a local ledger (`~/.walmart-mcp/feed-ledger.jsonl`, override with `WALMART_FEED_LEDGER_DIR`) because Walmart has **no API to read a listing's current description** — the ledger is your rollback source. |
+| ITEM report (`walmart_create_report`) | Report version `v4` contains catalog/pricing columns (incl. Amazon competitor links) but **no description/key-features columns** — do not use it for content audits. |
 
 ### Region restrictions
 

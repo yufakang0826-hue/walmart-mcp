@@ -40,9 +40,29 @@ describe('API Modules', () => {
       expect(client.delete).toHaveBeenCalledWith('/v3/items/SKU-123');
     });
 
-    it('getTaxonomy should GET /v3/taxonomy', async () => {
+    it('getTaxonomy should GET /v3/items/taxonomy (old /v3/taxonomy is gone)', async () => {
       await api.getTaxonomy();
-      expect(client.get).toHaveBeenCalledWith('/v3/taxonomy');
+      expect(client.get).toHaveBeenCalledWith('/v3/items/taxonomy', undefined);
+    });
+
+    it('getTaxonomy passes feedType + version for the spec-5.0 tree', async () => {
+      await api.getTaxonomy({ feedType: 'MP_ITEM' });
+      expect(client.get).toHaveBeenCalledWith(
+        '/v3/items/taxonomy',
+        expect.objectContaining({ feedType: 'MP_ITEM', version: expect.stringMatching(/^5\.0\./) }),
+      );
+    });
+
+    it('getItemSpec POSTs body { feedType, version, productTypes[] }', async () => {
+      await api.getItemSpec({ productType: 'Drone Propellers' });
+      expect(client.post).toHaveBeenCalledWith(
+        '/v3/items/spec',
+        expect.objectContaining({
+          feedType: 'MP_ITEM',
+          productTypes: ['Drone Propellers'],
+          version: expect.stringMatching(/^5\.0\./),
+        }),
+      );
     });
 
     it('getItemCount should default the required status param to PUBLISHED', async () => {

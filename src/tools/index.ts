@@ -125,7 +125,9 @@ export async function executeTool(
       return await api.items.getItemCount(args as Parameters<typeof api.items.getItemCount>[0]);
 
     case 'walmart_get_taxonomy':
-      return await api.items.getTaxonomy();
+      return await api.items.getTaxonomy(
+        args as Parameters<typeof api.items.getTaxonomy>[0],
+      );
 
     case 'walmart_get_item_spec':
       return await api.items.getItemSpec(args as Parameters<typeof api.items.getItemSpec>[0]);
