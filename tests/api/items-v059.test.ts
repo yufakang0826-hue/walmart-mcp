@@ -113,19 +113,51 @@ describe('ItemsApi.getItemSpec requiredOnly projection', () => {
 });
 
 describe('ItemsApi.getTaxonomy category filter', () => {
+  const TREE = {
+    itemTaxonomy: [
+      { category: 'Cameras & Photography', description: 'Cameras', productTypeGroup: [] },
+      {
+        category: 'Home & Garden',
+        description: 'Home',
+        productTypeGroup: [
+          {
+            productTypeGroupName: 'Decorative Accents',
+            productType: [
+              { productTypeName: 'Cigar Cases' },
+              { productTypeName: 'Vases' },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
   it('filters the tree client-side by category substring', async () => {
     const client = createMockClient();
-    client.get.mockResolvedValue({
-      itemTaxonomy: [
-        { category: 'Cameras & Photography', description: 'Cameras' },
-        { category: 'Home & Garden', description: 'Home' },
-      ],
-    });
+    client.get.mockResolvedValue(TREE);
     const api = new ItemsApi(client);
 
     const result = (await api.getTaxonomy({ category: 'camera' })) as any;
     expect(result.filtered).toBe(true);
     expect(result.matchCount).toBe(1);
     expect(result.itemTaxonomy[0].category).toBe('Cameras & Photography');
+  });
+
+  it('matches productTypeName leaves, not just top-level categories', async () => {
+    const client = createMockClient();
+    client.get.mockResolvedValue(TREE);
+    const api = new ItemsApi(client);
+
+    // "cigar" appears only as a productTypeName under Home & Garden.
+    const result = (await api.getTaxonomy({ category: 'cigar' })) as any;
+    expect(result.matchCount).toBe(1);
+    expect(result.itemTaxonomy[0].category).toBe('Home & Garden');
+    expect(result.matchedProductTypes).toEqual([
+      {
+        productTypeName: 'Cigar Cases',
+        category: 'Home & Garden',
+        productTypeGroup: 'Decorative Accents',
+      },
+    ]);
   });
 });

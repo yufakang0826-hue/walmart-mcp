@@ -1,0 +1,56 @@
+<!--
+  LLM-usage evaluation set for @lehaotech/walmart-mcp (mcp-builder Phase 4).
+
+  Rules honored:
+  - Read-only: every question is answerable with get_/search_ tools only.
+  - Stable: answers are identity facts (UPC/GTIN/wpid/productType/variant
+    wiring/spec structure) that do not drift with price or inventory.
+  - Verifiable: single short answer, string-comparable.
+  - Realistic: each mirrors an actual seller-ops lookup performed on the
+    YOUZITECH production account (seller 10003072111).
+
+  Run: point an LLM at the MCP server, ask each question cold, compare
+  answers. Score = exact matches / 10.
+-->
+<evaluation>
+  <qa_pair>
+    <question>What is the 12-digit UPC of the item with SKU GLMY-OS-G031?</question>
+    <answer>741733238888</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Which SKU in the catalog has the UPC 767667290310?</question>
+    <answer>FTGM-42280802100</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What product type did Walmart assign to the item with SKU FTGM-42280802100?</question>
+    <answer>String Trimmer Replacement Parts</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the variant group ULZ-SL03, which SKU is the primary variant?</question>
+    <answer>ULZ-L200</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the variant group ULZ-SL03, which SKU is the White color variant?</question>
+    <answer>ULZ-L199</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What is the name of the grouping attribute used by variant group GLMY-TN07?</question>
+    <answer>actual_color</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>According to the current item spec (feedType MP_ITEM), how many fields are required in MPItemFeedHeader?</question>
+    <answer>3</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>According to the current item spec for the product type "Lawn Mower Parts", how many attributes are required in the Orderable section?</question>
+    <answer>5</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What is the 14-digit GTIN of the item with SKU KX-DC-1?</question>
+    <answer>00758600790561</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What is the Walmart product ID (wpid) of the item with SKU MXJ-Insta360-7?</question>
+    <answer>31Z66ZED2JMP</answer>
+  </qa_pair>
+</evaluation>

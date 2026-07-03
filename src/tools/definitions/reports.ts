@@ -96,6 +96,21 @@ export const reportTools = [
         .optional()
         .describe('Fetch + unzip the report and return CSV inline (default true)'),
     },
+    // Permissive shape hints for the auto-extract projection.
+    outputSchema: {
+      requestId: z.string().optional(),
+      requestStatus: z.string().optional(),
+      reportType: z.string().optional(),
+      reportVersion: z.string().optional(),
+      downloadURL: z.string().optional(),
+      downloadURLExpirationTime: z.string().optional(),
+      extracted: z.boolean().optional(),
+      rowCount: z.number().optional(),
+      header: z.string().optional(),
+      content: z.string().optional(),
+      extractError: z.string().optional(),
+      hint: z.string().optional(),
+    },
   },
 
   // ===== Report Schedules =====

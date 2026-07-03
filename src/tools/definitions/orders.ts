@@ -247,6 +247,25 @@ export const orderTools = [
         .optional()
         .describe('Compact projection (default true). Set false for full raw order objects.'),
     },
+    // Permissive (all-optional, passthrough) so SDK runtime validation can
+    // never reject a live Walmart payload; it exists to give clients shape
+    // hints for the summary projection.
+    outputSchema: {
+      summary: z.boolean().optional(),
+      hint: z.string().optional(),
+      meta: z.object({}).passthrough().optional(),
+      pagination: z
+        .object({
+          returned: z.number().optional(),
+          totalCount: z.number().optional(),
+          hasMore: z.boolean().optional(),
+          nextCursor: z.string().optional(),
+        })
+        .passthrough()
+        .optional(),
+      orders: z.array(z.object({}).passthrough()).optional(),
+      list: z.object({}).passthrough().optional(),
+    },
   },
   {
     name: 'walmart_get_released_orders',

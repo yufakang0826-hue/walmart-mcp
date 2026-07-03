@@ -10,12 +10,18 @@ import { z } from 'zod';
 
 // ---------- Identifier atoms ----------
 
-/** Seller-defined SKU. Walmart allows up to 50 chars from a limited charset. */
+/**
+ * Seller-defined SKU. Walmart allows up to 50 chars. Spaces ARE legal —
+ * production catalogs contain SKUs like "SDF-1140477 P" and
+ * "MXJ-DJI OSMO Action6/5 Pro" (verified 2026-07-02, when the stricter
+ * regex blocked a bulk relist of real SKUs).
+ */
 export const SkuSchema = z
   .string()
   .min(1, 'SKU cannot be empty')
   .max(50, 'SKU max 50 chars')
-  .regex(/^[A-Za-z0-9._\-:/+]+$/, 'SKU may only contain letters, digits, and . _ - : / +');
+  .regex(/^[A-Za-z0-9._\-:/+ ]+$/, 'SKU may only contain letters, digits, spaces, and . _ - : / +')
+  .refine((s) => s.trim() === s, { message: 'SKU cannot have leading/trailing spaces' });
 
 /** GTIN / UPC / EAN — Walmart accepts 8 / 12 / 13 / 14 digit numeric strings. */
 export const GtinSchema = z

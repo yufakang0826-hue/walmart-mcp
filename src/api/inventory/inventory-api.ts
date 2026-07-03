@@ -12,7 +12,18 @@ export class InventoryApi {
 
   async updateInventory(data: { sku: string; quantity: number; shipNode?: string }) {
     if (!data.sku) throw new Error('SKU is required');
-    return await this.client.put(`${this.basePath}/inventory`, data);
+    // Walmart requires quantity as an OBJECT ({ unit, amount }) and the sku
+    // repeated as a query parameter — a flat { sku, quantity: 4 } body 400s.
+    // Verified against production 2026-07-02.
+    const body: Record<string, unknown> = {
+      sku: data.sku,
+      quantity: { unit: 'EACH', amount: data.quantity },
+    };
+    if (data.shipNode) body.shipNode = data.shipNode;
+    return await this.client.put(
+      `${this.basePath}/inventory?sku=${encodeURIComponent(data.sku)}`,
+      body,
+    );
   }
 
   async getInventoryAllNodes(sku: string) {

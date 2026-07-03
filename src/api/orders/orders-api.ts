@@ -1,4 +1,5 @@
 import { WalmartApiClient } from '../client.js';
+import { makePagination } from '../../utils/pagination.js';
 
 /** Compact per-order projection used when `summary: true` (the default). */
 interface OrderSummary {
@@ -59,10 +60,16 @@ function summarizeOrders(raw: unknown): unknown {
     };
   });
 
+  const meta = list?.meta as { totalCount?: number; nextCursor?: string } | undefined;
   return {
     summary: true,
     hint: 'Compact projection. Pass summary: false for full order objects, or use walmart_get_order for one PO.',
-    meta: list?.meta,
+    meta,
+    pagination: makePagination({
+      returned: summarized.length,
+      totalCount: meta?.totalCount,
+      nextCursor: meta?.nextCursor,
+    }),
     orders: summarized,
   };
 }
@@ -86,9 +93,19 @@ export class OrdersApi {
   }) {
     const { summary, ...query } = params ?? {};
     const raw = await this.client.get(this.basePath, query);
-    // Default to the compact projection: Walmart returns ~3KB per order and
-    // a 100-order page would otherwise flood an AI caller's context.
-    return summary === false ? raw : summarizeOrders(raw);
+    if (summary !== false) return summarizeOrders(raw);
+    // Raw mode: attach uniform pagination metadata without touching the
+    // native shape.
+    const list = (raw as { list?: { meta?: { totalCount?: number; nextCursor?: string }; elements?: { order?: unknown[] } } })?.list;
+    const orders = list?.elements?.order;
+    if (Array.isArray(orders)) {
+      (raw as Record<string, unknown>).pagination = makePagination({
+        returned: orders.length,
+        totalCount: list?.meta?.totalCount,
+        nextCursor: list?.meta?.nextCursor,
+      });
+    }
+    return raw;
   }
 
   async getReleasedOrders(params?: {

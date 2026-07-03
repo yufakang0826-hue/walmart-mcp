@@ -311,6 +311,15 @@ export const itemTools = [
         .optional()
         .describe('Compact required-attributes projection (default true). Set false for the full JSON Schema.'),
     },
+    // Permissive shape hints for the requiredOnly projection.
+    outputSchema: {
+      summarized: z.boolean().optional(),
+      hint: z.string().optional(),
+      headerRequired: z.array(z.string()).optional(),
+      orderable: z.object({}).passthrough().optional(),
+      visible: z.object({}).passthrough().optional(),
+      schema: z.object({}).passthrough().optional(),
+    },
   },
   {
     name: 'walmart_submit_item_feed',

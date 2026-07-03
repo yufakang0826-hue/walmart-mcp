@@ -26,8 +26,14 @@ describe('SkuSchema', () => {
     expect(() => SkuSchema.parse('x'.repeat(51))).toThrow();
   });
 
-  it('rejects SKU with forbidden characters', () => {
-    expect(() => SkuSchema.parse('SKU WITH SPACE')).toThrow();
+  it('accepts SKUs with interior spaces (real Walmart catalogs contain them)', () => {
+    expect(SkuSchema.parse('SDF-1140477 P')).toBe('SDF-1140477 P');
+    expect(SkuSchema.parse('MXJ-DJI OSMO Action6/5 Pro')).toBe('MXJ-DJI OSMO Action6/5 Pro');
+  });
+
+  it('rejects leading/trailing spaces and forbidden characters', () => {
+    expect(() => SkuSchema.parse(' SKU-1')).toThrow();
+    expect(() => SkuSchema.parse('SKU-1 ')).toThrow();
     expect(() => SkuSchema.parse('SKU#HASH')).toThrow();
     expect(() => SkuSchema.parse('SKU@AT')).toThrow();
   });

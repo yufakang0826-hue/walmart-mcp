@@ -4,6 +4,53 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 0.5.10
+
+### Added (mcp-builder design review remediation)
+- **Tool annotations for all 130 tools** (readOnlyHint / destructiveHint /
+  idempotentHint / openWorldHint) via a centralized rule engine
+  (`src/tools/annotations.ts`) with explicit overrides for escape hatches and
+  irreversible business actions (ship/refund/cancel/retire → destructive).
+  Unknown future tools default to conservative destructive. Classification is
+  pinned by a table test so drift fails CI.
+- **structuredContent on every tool result**: plain-object results are
+  mirrored into `structuredContent` (arrays wrapped as `{ items }`), so
+  MCP clients can consume outputs programmatically instead of re-parsing the
+  JSON text block. Formal `outputSchema` deliberately deferred to 0.6.0 —
+  declaring it turns on SDK runtime validation, which is risky for
+  passthrough Walmart payloads until we have fixtures for each shape.
+- **Uniform pagination metadata**: `walmart_get_all_orders` (raw + summary),
+  `walmart_get_all_items`, and `walmart_get_all_returns` now attach a
+  non-destructive `pagination: { returned, totalCount, hasMore, nextCursor }`
+  block alongside their native shapes (which are unchanged).
+- **Evaluation suite** (`evals/walmart-mcp-evals.xml`): 10 read-only,
+  stable-answer, string-verifiable questions per the mcp-builder Phase 4
+  format, based on real catalog identity facts.
+- Design review report: `docs/mcp-builder-review-2026-07-03.md` (overall
+  4.2/5; the annotations and structured-output gaps above were its P0/P1).
+- **Permissive `outputSchema` on the three owned-shape projection tools**
+  (walmart_get_all_orders, walmart_get_item_spec, walmart_download_report):
+  all-optional + passthrough, so SDK runtime validation can never reject a
+  live payload while clients still get shape hints. Full strict outputSchema
+  remains a 0.6.0 item (needs per-shape fixtures).
+- **`walmart_get_taxonomy` filter now searches productTypeName leaves** in
+  addition to top-level category names, and returns a `matchedProductTypes`
+  list ({ productTypeName, category, productTypeGroup }) — searching "cigar"
+  now finds Cigar Cases even though the top-level category is "Home".
+
+### Fixed
+- **`walmart_update_inventory` always 400ed**: Walmart requires
+  `quantity: { unit, amount }` (object form) plus the sku repeated as a
+  query parameter; the tool sent a flat `{ sku, quantity: 4 }` body.
+  Discovered setting stock for the first item created through the MCP.
+- **`SkuSchema` rejected legal SKUs containing spaces** (e.g.
+  "SDF-1140477 P", "MXJ-DJI OSMO Action6/5 Pro" — real SKUs in this very
+  catalog), which blocked them from bulk maintenance feeds. Interior spaces
+  are now accepted; leading/trailing spaces still rejected.
+- Walmart field-format note learned in production: `Orderable.endDate`
+  rejects plain dates with a misleading "use YYYY-MM-DD" error — it actually
+  wants an ISO 8601 datetime (e.g. `2049-12-31T00:00:00Z`).
+
 ## [0.5.9] - 2026-07-02
 
 ### Fixed
@@ -80,6 +127,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Note: ITEM report **v4 does not contain description/key-features columns**
   (it is a catalog/pricing view with itemIds, URLs, brand, variants, and
   Amazon competitor links). Do not treat it as a content-audit source.
+- **Content-read gap: CLOSED as platform limitation (2026-07-03).** All
+  candidate sources verified against production and none expose listing
+  description/keyFeatures: GET /v3/items/{sku} (thin), catalog search
+  (thin), ITEM report v4 (no content cols), ITEM report v5 (52 cols incl.
+  promo/comparison pricing — still no content cols), ITEM_LISTING_AUDIT
+  (gateway rejects; not available to this account). Walmart simply offers
+  no seller-side API to read live listing copy. Consequence: the local
+  feed ledger (~/.walmart-mcp/feed-ledger.jsonl) is the ONLY rollback
+  source for content — never bypass the submit tools when changing copy.
 
 ### Corrected
 - The 0.5.8-era audit finding "20 write tools have opaque object params" was

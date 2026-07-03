@@ -9,6 +9,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { getConfig, validateConfig } from './config/environment.js';
 import { WalmartSellerApi } from './api/index.js';
 import { getToolDefinitions, executeTool } from './tools/index.js';
+import { getToolAnnotations } from './tools/annotations.js';
 import { serverLogger } from './utils/logger.js';
 import { WalmartApiError } from './utils/api-error.js';
 
@@ -52,11 +53,18 @@ class WalmartMcpServer {
 
     for (const toolDef of tools) {
       const hasSchema = Object.keys(toolDef.inputSchema).length > 0;
+      const outputSchema = (toolDef as { outputSchema?: Record<string, ZodType> }).outputSchema;
       this.server.registerTool(toolDef.name, {
         description: toolDef.description,
         inputSchema: hasSchema
           ? (toolDef.inputSchema as Record<string, ZodType>)
           : undefined,
+        // Present only on projection tools whose shapes we own; kept
+        // permissive (all-optional) so SDK validation can't reject live data.
+        ...(outputSchema ? { outputSchema } : {}),
+        // readOnly/destructive/idempotent/openWorld hints let clients decide
+        // what needs user confirmation and what can run in parallel.
+        annotations: getToolAnnotations(toolDef.name),
       }, async (rawArgs: Record<string, unknown>) => {
         // Re-parse args through the tool's zod schema. The MCP SDK does shape
         // validation against the inputSchema, but explicit z.object(...).parse
@@ -94,11 +102,22 @@ class WalmartMcpServer {
 
         try {
           const result = await executeTool(this.api, toolDef.name, args);
+          // Mirror plain-object results into structuredContent so clients
+          // that understand it can consume tool output programmatically
+          // instead of re-parsing the JSON text block. Arrays are wrapped
+          // (structuredContent must be an object per the MCP spec).
+          const structuredContent =
+            result !== null && typeof result === 'object'
+              ? Array.isArray(result)
+                ? { items: result }
+                : (result as Record<string, unknown>)
+              : undefined;
           return {
             content: [{
               type: 'text' as const,
               text: JSON.stringify(result, null, 2),
             }],
+            ...(structuredContent ? { structuredContent } : {}),
           };
         } catch (error: unknown) {
           const errorMsg = error instanceof Error ? error.message : String(error);

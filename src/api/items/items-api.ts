@@ -4,6 +4,7 @@ import { join } from 'path';
 import { WalmartApiClient } from '../client.js';
 import { getBusinessUnit, getSpecVersionCandidates } from '../../config/environment.js';
 import type { WalmartMarket } from '../../config/environment.js';
+import { makePagination } from '../../utils/pagination.js';
 
 /**
  * Append-only local ledger of every content feed this MCP submits.
@@ -144,7 +145,18 @@ export class ItemsApi {
     if (params?.lifecycleStatus) query.lifecycleStatus = params.lifecycleStatus;
     if (params?.publishedStatus) query.publishedStatus = params.publishedStatus;
     if (params?.sku) query.sku = params.sku;
-    return await this.client.get(`${this.basePath}/items`, query);
+    const raw = await this.client.get(`${this.basePath}/items`, query);
+    // Attach uniform pagination metadata (non-destructive).
+    const items = (raw as { ItemResponse?: unknown[]; totalItems?: number })?.ItemResponse;
+    if (Array.isArray(items)) {
+      const offset = params?.offset != null ? parseInt(String(params.offset), 10) : 0;
+      (raw as Record<string, unknown>).pagination = makePagination({
+        returned: items.length,
+        totalCount: (raw as { totalItems?: number }).totalItems,
+        offset: Number.isNaN(offset) ? null : offset,
+      });
+    }
+    return raw;
   }
 
   async getItem(sku: string) {
@@ -186,17 +198,43 @@ export class ItemsApi {
       : undefined;
     const raw = await this.client.get(`${this.basePath}/items/taxonomy`, query);
 
-    // The full tree is ~2MB. When a category filter is given, return only
-    // matching category nodes (case-insensitive substring match).
+    // The full tree is ~2MB. When a filter is given, match it (case-
+    // insensitive substring) against BOTH top-level category names AND
+    // productTypeName leaves — sellers usually search by product, not by
+    // Walmart's category taxonomy ("cigar" should find Cigar Cases even
+    // though the top-level category is "Home").
     if (!params?.category) return raw;
-    const tree = (raw as { itemTaxonomy?: Array<Record<string, unknown>> })?.itemTaxonomy;
+    const tree = (raw as { itemTaxonomy?: Array<Record<string, any>> })?.itemTaxonomy;
     if (!Array.isArray(tree)) return raw;
     const needle = params.category.toLowerCase();
-    const matched = tree.filter((node) =>
-      String(node.category ?? '').toLowerCase().includes(needle) ||
-      String(node.description ?? '').toLowerCase().includes(needle),
-    );
-    return { filtered: true, categoryFilter: params.category, matchCount: matched.length, itemTaxonomy: matched };
+    const matchedProductTypes: Array<{ productTypeName: string; category: string; productTypeGroup: string }> = [];
+    const matched = tree.filter((node) => {
+      const categoryHit =
+        String(node.category ?? '').toLowerCase().includes(needle) ||
+        String(node.description ?? '').toLowerCase().includes(needle);
+      let ptHit = false;
+      for (const group of node.productTypeGroup ?? []) {
+        for (const pt of group.productType ?? []) {
+          const name = String(pt.productTypeName ?? '');
+          if (name.toLowerCase().includes(needle)) {
+            ptHit = true;
+            matchedProductTypes.push({
+              productTypeName: name,
+              category: String(node.category ?? ''),
+              productTypeGroup: String(group.productTypeGroupName ?? ''),
+            });
+          }
+        }
+      }
+      return categoryHit || ptHit;
+    });
+    return {
+      filtered: true,
+      categoryFilter: params.category,
+      matchCount: matched.length,
+      matchedProductTypes,
+      itemTaxonomy: matched,
+    };
   }
 
   async getItemSpec(params: {

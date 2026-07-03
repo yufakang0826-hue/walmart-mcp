@@ -1,4 +1,5 @@
 import { WalmartApiClient } from '../client.js';
+import { makePagination } from '../../utils/pagination.js';
 
 export class ReturnsApi {
   private basePath = '/v3/returns';
@@ -13,7 +14,19 @@ export class ReturnsApi {
     returnCreationEndDate?: string;
     customerOrderId?: string;
   }) {
-    return await this.client.get(this.basePath, params);
+    const raw = await this.client.get(this.basePath, params);
+    // Attach uniform pagination metadata (non-destructive).
+    const returns = (raw as { returnOrders?: unknown[] })?.returnOrders;
+    const meta = (raw as { meta?: { totalCount?: number; nextCursor?: string } })?.meta;
+    if (Array.isArray(returns)) {
+      (raw as Record<string, unknown>).pagination = makePagination({
+        returned: returns.length,
+        totalCount: meta?.totalCount,
+        nextCursor: meta?.nextCursor,
+        offset: params?.offset ?? null,
+      });
+    }
+    return raw;
   }
 
   async getReturn(returnOrderId: string) {

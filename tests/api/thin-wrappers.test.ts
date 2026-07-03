@@ -111,10 +111,13 @@ describe('InventoryApi', () => {
     expect(client.get).toHaveBeenCalledWith('/v3/inventory', { sku: 'SKU-1' });
   });
 
-  it('updateInventory PUTs the payload', async () => {
-    const body = { sku: 'SKU-1', quantity: 5 };
-    await api.updateInventory(body);
-    expect(client.put).toHaveBeenCalledWith('/v3/inventory', body);
+  it('updateInventory wraps quantity as { unit, amount } and repeats sku in query', async () => {
+    await api.updateInventory({ sku: 'SKU-1', quantity: 5 });
+    // Flat { quantity: 5 } bodies 400 — Walmart wants the object form.
+    expect(client.put).toHaveBeenCalledWith('/v3/inventory?sku=SKU-1', {
+      sku: 'SKU-1',
+      quantity: { unit: 'EACH', amount: 5 },
+    });
   });
 
   it('getInventoryAllNodes GETs /v3/inventories/{sku}', async () => {
